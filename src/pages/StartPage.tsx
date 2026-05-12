@@ -148,6 +148,32 @@ export const StartPage = () => {
     updateTeam(teamIndex, { bonusRaw: bonuses.join(',') })
   }
 
+  const getBonusParts = (teamIndex: number) => {
+    const raw = teams[teamIndex].bonusRaw ?? ''
+    // preserve empty parts so UI can show placeholder inputs
+    if (raw === '') return ['']
+    return raw.split(',').map((s) => s.trim())
+  }
+
+  const addBonus = (teamIndex: number) => {
+    const parts = getBonusParts(teamIndex)
+    const next = parts.concat([''])
+    updateTeam(teamIndex, { bonusRaw: next.join(',') })
+  }
+
+  const updateBonusAt = (teamIndex: number, bonusIndex: number, value: string) => {
+    const parts = getBonusParts(teamIndex)
+    const next = [...parts]
+    next[bonusIndex] = value.trim()
+    updateTeam(teamIndex, { bonusRaw: next.join(',') })
+  }
+
+  const removeBonus = (teamIndex: number, bonusIndex: number) => {
+    const parts = getBonusParts(teamIndex)
+    parts.splice(bonusIndex, 1)
+    updateTeam(teamIndex, { bonusRaw: parts.join(',') })
+  }
+
   const removeMember = (teamIndex: number, memberIndex: number) => {
     const players = parsePlayers(teams[teamIndex].playersRaw)
     players.splice(memberIndex, 1)
@@ -408,15 +434,38 @@ export const StartPage = () => {
                   </div>
                 </div>
 
-                <label className="text-xs text-slate-700">
-                  ボーナスマス (カンマ区切りの図鑑番号)
-                  <input
-                    className="mt-1 w-full rounded border border-slate-300 p-2 text-sm"
-                    value={team.bonusRaw ?? ''}
-                    onChange={(e) => updateTeam(i, { bonusRaw: e.target.value })}
-                    placeholder="例: 25,150"
-                  />
-                </label>
+                <div className="text-xs text-slate-700">
+                  <div className="mb-1">ボーナスマス</div>
+                  <div className="space-y-1">
+                    {getBonusParts(i).map((raw, bi) => (
+                      <div key={`bonus-${bi}`} className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          max={1025}
+                          className="w-full rounded border border-slate-300 p-2 text-sm"
+                          value={raw}
+                          onChange={(e) => updateBonusAt(i, bi, e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeBonus(i, bi)}
+                          className="rounded bg-rose-500 px-2 py-1 text-white text-sm"
+                          aria-label={`ボーナスマス${bi + 1}を削除`}
+                        >
+                          -
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => addBonus(i)}
+                      className="mt-1 rounded bg-green-600 px-2 py-1 text-white text-sm"
+                    >
+                      ボーナスマスを追加
+                    </button>
+                  </div>
+                </div>
 
                 <div className="flex justify-end">
                   <button

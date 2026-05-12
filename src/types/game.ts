@@ -20,6 +20,7 @@ export type Team = {
   players: string[]
   bonusNumbers?: number[]
   penaltyPoints: number
+  attackExecutions?: number
 }
 
 export type Panel = {
@@ -79,4 +80,21 @@ export type TeamRanking = {
   teamId: string
   score: number
   maxOwnedPokemonNumber: number
+}
+
+export type AttackSubmission = {
+  id: string
+  teamId: string
+  playerName: string
+  comment?: string
+  submittedAt: string
+}
+
+export type AttackChance = {
+  active: boolean
+  topic?: string
+  initiatedAt?: string
+  submissions: AttackSubmission[]
+  winnerSubmissionId?: string
+  executed?: boolean
 }

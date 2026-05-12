@@ -8,6 +8,10 @@ type BoardProps = {
   requests?: CaptureRequest[]
   selectedPanelId: string | null
   onSelectPanel: (panelId: string) => void
+  // attack execution mode: if true, selectable panels can be executed via onExecutePanel
+  attackExecMode?: boolean
+  attackExecutorTeamId?: string | null
+  onExecutePanel?: (panelId: string) => void
 }
 
 export const Board = ({
@@ -17,6 +21,9 @@ export const Board = ({
   requests = [],
   selectedPanelId,
   onSelectPanel,
+  attackExecMode = false,
+  attackExecutorTeamId = null,
+  onExecutePanel,
 }: BoardProps) => {
   const teamMap = new Map(teams.map((team) => [team.id, team]))
   const requestsMap = new Map(requests.map((r) => [r.id, r]))
@@ -81,7 +88,23 @@ export const Board = ({
           const btn = target?.closest('button[data-panel-id]') as HTMLButtonElement | null
           if (btn) {
             const pid = btn.getAttribute('data-panel-id')
-            if (pid) onSelectPanel(pid)
+            if (pid) {
+              // if attack exec mode is active and executor provided, prefer execute
+              if (
+                attackExecMode &&
+                typeof onExecutePanel === 'function' &&
+                (() => {
+                  const panel = board.find((p) => p.id === pid)
+                  if (!panel) return false
+                  // selectable only if owned and not owned by executor
+                  return !!panel.ownerTeamId && panel.ownerTeamId !== attackExecutorTeamId
+                })()
+              ) {
+                onExecutePanel(pid)
+              } else {
+                onSelectPanel(pid)
+              }
+            }
           }
         } catch (err) {
           // ignore
@@ -129,6 +152,7 @@ export const Board = ({
         {board.map((panel) => {
           const owner = panel.ownerTeamId ? teamMap.get(panel.ownerTeamId) : undefined
           const selected = panel.id === selectedPanelId
+          const isExecutable = attackExecMode && panel.ownerTeamId && panel.ownerTeamId !== attackExecutorTeamId
 
           const requestTeamColors = Array.from(
             new Set(
@@ -160,7 +184,7 @@ export const Board = ({
           return (
             <div
               key={panel.id}
-              className={`aspect-square rounded ${selected ? 'ring-2 ring-blue-500' : ''}`}
+              className={`aspect-square rounded ${selected ? 'ring-2 ring-blue-500' : ''} ${isExecutable ? 'ring-2 ring-rose-500' : ''}`}
               style={{ padding: outerGradient ? '3px' : undefined, background: outerGradient, borderRadius: '0.375rem' }}
             >
                 <button
@@ -169,7 +193,11 @@ export const Board = ({
                   onClick={() => {
                     // fallback for environments where pointerup might not fire
                     if (isDraggingRef.current) return
-                    onSelectPanel(panel.id)
+                    if (attackExecMode && typeof onExecutePanel === 'function' && panel.ownerTeamId && panel.ownerTeamId !== attackExecutorTeamId) {
+                      onExecutePanel(panel.id)
+                    } else {
+                      onSelectPanel(panel.id)
+                    }
                   }}
                   onPointerUp={(e) => {
                     // prefer pointerup for reliable detection alongside drag handling
@@ -177,9 +205,13 @@ export const Board = ({
                     // only react to primary button
                     // @ts-ignore - PointerEvent type is available in DOM
                     if (e && typeof (e as PointerEvent).button === 'number' && (e as PointerEvent).button !== 0) return
-                    onSelectPanel(panel.id)
+                    if (attackExecMode && typeof onExecutePanel === 'function' && panel.ownerTeamId && panel.ownerTeamId !== attackExecutorTeamId) {
+                      onExecutePanel(panel.id)
+                    } else {
+                      onSelectPanel(panel.id)
+                    }
                   }}
-                  className={`w-full h-full aspect-square rounded border text-[10px] font-semibold leading-tight transition hover:border-slate-500 relative`}
+                  className={`w-full h-full aspect-square rounded border text-[10px] font-semibold leading-tight transition hover:border-slate-500 relative ${isExecutable ? 'cursor-crosshair' : ''}`}
                   style={{
                     backgroundColor:
                       owner?.color ??

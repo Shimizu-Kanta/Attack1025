@@ -18,6 +18,8 @@ import type {
   Panel,
   Team,
   TeamRanking,
+  AttackChance,
+  AttackSubmission,
 } from '../types/game'
 import { createDefaultSeed } from '../utils/seed'
 
@@ -59,6 +61,12 @@ type GameStore = {
   endGame: () => void
   resetGame: () => void
   setSelectedPanel: (panelId: string | null) => void
+  // Attack Chance
+  attackChance: AttackChance
+  startAttackChance: (topic: string) => void
+  submitAttackChance: (input: { teamId: string; playerName: string; comment?: string }) => { ok: boolean; message?: string }
+  chooseAttackWinner: (submissionId: string) => void
+  executeAttackRemoval: (targetTeamId: string) => { ok: boolean; lostPanelId?: string | null }
 }
 
 const STORAGE_KEY = 'attack1025-game-state'
@@ -141,6 +149,7 @@ export const useGameStore = create<GameStore>()(
       teams: [],
       board: [],
       requests: [],
+      attackChance: { active: false, submissions: [] },
       logs: [],
       selectedPanelId: null,
       startedAt: null,
@@ -185,6 +194,7 @@ export const useGameStore = create<GameStore>()(
           players: team.players,
           bonusNumbers: team.bonusNumbers ?? [],
           penaltyPoints: 0,
+          attackExecutions: 0,
         }))
 
         set({
@@ -558,6 +568,126 @@ export const useGameStore = create<GameStore>()(
           return { ...state, selectedPanelId: panelId }
         })
       },
+
+      // Attack Chance methods
+      startAttackChance: (topic: string) => {
+        const now = new Date().toISOString()
+        set((state) => ({
+          attackChance: { active: true, topic: topic.trim(), initiatedAt: now, submissions: [] },
+          logs: [createLog('game_start', `アタックチャンス開始: ${topic}`), ...state.logs],
+        }))
+      },
+
+      submitAttackChance: ({ teamId, playerName, comment }) => {
+        const state = get()
+        if (!state.attackChance?.active) {
+          return { ok: false, message: '現在アタックチャンスは開催されていません。' }
+        }
+
+        const teamExists = state.teams.some((t) => t.id === teamId)
+        if (!teamExists) {
+          return { ok: false, message: 'チームが見つかりません。' }
+        }
+
+        const id = crypto.randomUUID()
+        const submission: AttackSubmission = {
+          id,
+          teamId,
+          playerName: playerName.trim() || '匿名',
+          comment: comment?.trim() || undefined,
+          submittedAt: new Date().toISOString(),
+        }
+
+        set((state) => ({
+          attackChance: { ...(state.attackChance || { active: false, submissions: [] }), submissions: [...(state.attackChance?.submissions || []), submission] },
+          logs: [createLog('request_created', `アタック申請: ${submission.playerName} (${submission.teamId})`), ...state.logs],
+        }))
+
+        return { ok: true }
+      },
+
+      chooseAttackWinner: (submissionId: string) => {
+        const state = get()
+        if (!state.attackChance?.active) return
+        const sub = state.attackChance.submissions.find((s) => s.id === submissionId)
+        if (!sub) return
+
+        // mark winner and close attack chance; winner gets the right to execute later
+        set((state) => ({
+          attackChance: { ...(state.attackChance || { active: false, submissions: [] }), winnerSubmissionId: submissionId, active: false, executed: false },
+          logs: [createLog('request_approved', `アタックチャンス勝者選定: ${sub.playerName} (${sub.teamId})`), ...state.logs],
+        }))
+      },
+
+      // executorTeamId: the team which is executing the right (must match winner team)
+      executeAttackRemoval: (executorTeamId: string, targetTeamId: string) => {
+        const state = get()
+        if (!state.attackChance || !state.attackChance.winnerSubmissionId) {
+          return { ok: false, message: '勝者が選定されていません' }
+        }
+        if (state.attackChance.executed) {
+          return { ok: false, message: '既に実行済みです' }
+        }
+
+        const winnerSub = state.attackChance.submissions.find((s) => s.id === state.attackChance!.winnerSubmissionId)
+        if (!winnerSub) {
+          return { ok: false, message: '勝者情報が見つかりません' }
+        }
+
+        if (winnerSub.teamId !== executorTeamId) {
+          return { ok: false, message: '権利を持つチームのみ実行できます' }
+        }
+
+        const teamExists = state.teams.some((t) => t.id === targetTeamId)
+        if (!teamExists) return { ok: false, message: '対象チームが存在しません' }
+
+        const result = applyPenaltyLoss(state.board, targetTeamId)
+
+        // increment executor's attackExecutions count
+        const nextTeams = state.teams.map((t) =>
+          t.id === executorTeamId ? { ...t, attackExecutions: (t.attackExecutions || 0) + 1 } : t,
+        )
+
+        const logs = [createLog('panel_lost', `アタック実行: チーム ${targetTeamId} のパネルを1枚喪失`), ...state.logs]
+
+        set({ board: computeHighlights(result.board, nextTeams), logs, attackChance: { ...(state.attackChance || { active: false, submissions: [] }), executed: true } })
+
+        return { ok: true, lostPanelId: result.lostPanelId }
+      },
+
+        // Execute attack by selecting a specific panel id to remove ownership from
+        executeAttackByPanel: (executorTeamId: string, panelId: string) => {
+          const state = get()
+          if (!state.attackChance || !state.attackChance.winnerSubmissionId) {
+            return { ok: false, message: '勝者が選定されていません' }
+          }
+          if (state.attackChance.executed) {
+            return { ok: false, message: '既に実行済みです' }
+          }
+
+          const winnerSub = state.attackChance.submissions.find((s) => s.id === state.attackChance!.winnerSubmissionId)
+          if (!winnerSub) return { ok: false, message: '勝者情報が見つかりません' }
+          if (winnerSub.teamId !== executorTeamId) {
+            return { ok: false, message: '権利を持つチームのみ実行できます' }
+          }
+
+          const panel = state.board.find((p) => p.id === panelId)
+          if (!panel) return { ok: false, message: '対象パネルが見つかりません' }
+          if (!panel.ownerTeamId) return { ok: false, message: '対象パネルは所有されていません' }
+          if (panel.ownerTeamId === executorTeamId) return { ok: false, message: '自チームのパネルは対象にできません' }
+
+          const nextBoard = state.board.map((p) => (p.id === panelId ? { ...p, ownerTeamId: null } : { ...p }))
+
+          const nextTeams = state.teams.map((t) =>
+            t.id === executorTeamId ? { ...t, attackExecutions: (t.attackExecutions || 0) + 1 } : t,
+          )
+
+          const logs = [createLog('panel_lost', `アタック実行(選択): チーム ${panel.ownerTeamId} のパネル ${panel.id} を喪失`), ...state.logs]
+
+          set({ board: computeHighlights(nextBoard, nextTeams), logs, attackChance: { ...(state.attackChance || { active: false, submissions: [] }), executed: true } })
+
+          return { ok: true, lostPanelId: panelId }
+        },
     }),
     {
       name: STORAGE_KEY,
@@ -604,6 +734,7 @@ export const useGameStore = create<GameStore>()(
           teams: nextTeams,
           requests: Array.isArray(merged.requests) ? merged.requests : [],
           logs: Array.isArray(merged.logs) ? merged.logs : [],
+          attackChance: (merged as any).attackChance ?? { active: false, submissions: [] },
           selectedPanelId,
           startedAt,
           endedAt,
@@ -616,6 +747,7 @@ export const useGameStore = create<GameStore>()(
         board: state.board,
         requests: state.requests,
         logs: state.logs,
+        attackChance: state.attackChance,
         selectedPanelId: state.selectedPanelId,
         startedAt: state.startedAt,
         endedAt: state.endedAt,
