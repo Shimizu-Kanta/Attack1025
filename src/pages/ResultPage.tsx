@@ -7,6 +7,7 @@ export const ResultPage = () => {
   const settings = useGameStore((state) => state.settings)
   const teams = useGameStore((state) => state.teams)
   const board = useGameStore((state) => state.board)
+  const requests = useGameStore((state) => state.requests)
   const ranking = useGameStore((state) => state.ranking)
   const logs = useGameStore((state) => state.logs)
   const resetGame = useGameStore((state) => state.resetGame)
@@ -48,6 +49,7 @@ export const ResultPage = () => {
           board={board}
           boardSize={settings.boardSize}
           teams={teams}
+          requests={requests}
           selectedPanelId={selectedPanelId}
           onSelectPanel={setSelectedPanel}
         />

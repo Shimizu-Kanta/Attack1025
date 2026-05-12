@@ -56,15 +56,12 @@ export const GamePage = () => {
       setError('申請チームを選択してください。')
       return
     }
-    if (!playerName.trim()) {
-      setError('プレイヤー名を入力してください。')
-      return
-    }
+    // プレイヤー名は匿名でも可
 
     const result = submitRequest({
       panelId: selectedPanel.id,
       teamId: requestTeamId,
-      playerName,
+      playerName: playerName.trim() || '匿名',
       evidenceUrl,
       comment,
     })
@@ -128,6 +125,7 @@ export const GamePage = () => {
             board={board}
             boardSize={settings.boardSize}
             teams={teams}
+            requests={requests}
             selectedPanelId={selectedPanelId}
             onSelectPanel={setSelectedPanel}
           />
@@ -158,7 +156,10 @@ export const GamePage = () => {
                 <select
                   className="mt-1 w-full rounded border border-slate-300 p-2"
                   value={requestTeamId}
-                  onChange={(e) => setRequestTeamId(e.target.value)}
+                  onChange={(e) => {
+                    setRequestTeamId(e.target.value)
+                    setPlayerName('')
+                  }}
                 >
                   <option value="">選択してください</option>
                   {teams.map((team) => (
@@ -170,11 +171,18 @@ export const GamePage = () => {
               </label>
               <label className="block text-xs">
                 プレイヤー名
-                <input
+                <select
                   className="mt-1 w-full rounded border border-slate-300 p-2"
                   value={playerName}
                   onChange={(e) => setPlayerName(e.target.value)}
-                />
+                >
+                  <option value="">匿名</option>
+                  {(teams.find((t) => t.id === requestTeamId)?.players || []).map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="block text-xs">
                 Discord URL (任意)
@@ -194,13 +202,19 @@ export const GamePage = () => {
                 />
               </label>
               {error ? <p className="text-xs text-rose-600">{error}</p> : null}
-              <button
-                type="button"
-                onClick={handleRequestSubmit}
-                className="rounded bg-blue-600 px-3 py-2 text-sm font-semibold text-white"
-              >
-                取得申請する
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRequestSubmit}
+                  disabled={teams.length === 0}
+                  className={`rounded px-3 py-2 text-sm font-semibold text-white ${teams.length === 0 ? 'bg-slate-300' : 'bg-blue-600'}`}
+                >
+                  取得申請する
+                </button>
+                {teams.length === 0 ? (
+                  <p className="text-xs text-slate-500">チームが存在しないため申請できません。</p>
+                ) : null}
+              </div>
 
               <div>
                 <h3 className="text-xs font-bold text-slate-700">現在取得可能なパネル</h3>

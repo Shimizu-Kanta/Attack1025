@@ -33,7 +33,6 @@ export const StartPage = () => {
   const [seed, setSeed] = useState(createDefaultSeed())
   const [revealMode, setRevealMode] = useState<RevealMode>('afterApproval')
   const [penaltyThreshold, setPenaltyThreshold] = useState(2)
-  const [teamCount, setTeamCount] = useState(2)
   const [teams, setTeams] = useState<TeamForm[]>(createTeamDefaults(2))
   const [error, setError] = useState<string>('')
 
@@ -70,7 +69,6 @@ export const StartPage = () => {
   }
 
   const resizeTeams = (count: number) => {
-    setTeamCount(count)
     setTeams((prev) => {
       const next = [...prev]
       if (next.length > count) {
@@ -80,7 +78,7 @@ export const StartPage = () => {
         const idx = next.length
         next.push({
           name: `チーム${idx + 1}`,
-          color: TEAM_COLOR_PRESETS[idx % TEAM_COLOR_PRESETS.length],
+          color: TEAM_COLOR_PRESETS[idx % TEAM_COLOR_PRESETS.length].color,
           playersRaw: '',
         })
       }
@@ -90,6 +88,58 @@ export const StartPage = () => {
 
   const updateTeam = (index: number, patch: Partial<TeamForm>) => {
     setTeams((prev) => prev.map((team, i) => (i === index ? { ...team, ...patch } : team)))
+  }
+
+  const addTeam = () => {
+    setTeams((prev) => {
+      const idx = prev.length
+      return [
+        ...prev,
+        {
+          name: `チーム${idx + 1}`,
+          color: TEAM_COLOR_PRESETS[idx % TEAM_COLOR_PRESETS.length].color,
+          playersRaw: '',
+        },
+      ]
+    })
+  }
+
+  const removeTeam = (index: number) => {
+    setTeams((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const getContrastColor = (hex: string) => {
+    try {
+      const c = hex.replace('#', '')
+      const r = parseInt(c.substring(0, 2), 16)
+      const g = parseInt(c.substring(2, 4), 16)
+      const b = parseInt(c.substring(4, 6), 16)
+      const yiq = (r * 299 + g * 587 + b * 114) / 1000
+      return yiq >= 128 ? '#0f172a' : '#ffffff'
+    } catch (e) {
+      return '#0f172a'
+    }
+  }
+
+  const parsePlayers = (playersRaw: string) =>
+    playersRaw
+      .split(',')
+      .map((s) => s.trim())
+      
+
+  const updatePlayers = (teamIndex: number, players: string[]) => {
+    updateTeam(teamIndex, { playersRaw: players.join(',') })
+  }
+
+  const addMember = (teamIndex: number) => {
+    const players = parsePlayers(teams[teamIndex].playersRaw)
+    updatePlayers(teamIndex, [...players, ''])
+  }
+
+  const removeMember = (teamIndex: number, memberIndex: number) => {
+    const players = parsePlayers(teams[teamIndex].playersRaw)
+    players.splice(memberIndex, 1)
+    updatePlayers(teamIndex, players)
   }
 
   const handleStart = () => {
@@ -107,6 +157,19 @@ export const StartPage = () => {
       excludedPokemonNumbers,
       revealMode,
       penaltyThreshold,
+    }
+
+    // 重複カラーのチェック
+    const colors = teams.map((t) => t.color)
+    const uniqueColors = new Set(colors)
+    if (uniqueColors.size !== colors.length) {
+      setError('同じカラーが選択されています。各チームで異なるカラーを選択してください。')
+      return
+    }
+
+    if (teams.length <  2) {
+      setError('チームは2つ以上必要です。')
+      return
     }
 
     try {
@@ -246,59 +309,100 @@ export const StartPage = () => {
       </section>
 
       <section className="space-y-3 rounded border border-slate-300 bg-white p-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold">チーム設定</h2>
-          <label className="text-sm">
-            チーム数
-            <select
-              className="ml-2 rounded border border-slate-300 p-1"
-              value={teamCount}
-              onChange={(e) => resizeTeams(Number(e.target.value))}
-            >
-              {Array.from({ length: 7 }).map((_, i) => (
-                <option key={i + 2} value={i + 2}>
-                  {i + 2}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        {teams.map((team, i) => (
-          <div key={`team-form-${i}`} className="grid gap-2 rounded border border-slate-200 p-3 md:grid-cols-3">
-            <label className="text-xs">
-              チーム名
-              <input
-                className="mt-1 w-full rounded border border-slate-300 p-2"
-                value={team.name}
-                onChange={(e) => updateTeam(i, { name: e.target.value })}
-              />
-            </label>
-            <label className="text-xs">
-              カラー
-              <select
-                className="mt-1 w-full rounded border border-slate-300 p-2"
-                value={team.color}
-                onChange={(e) => updateTeam(i, { color: e.target.value })}
-              >
-                {TEAM_COLOR_PRESETS.map((preset) => (
-                  <option key={preset.color} value={preset.color}>
-                    {preset.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-xs">
-              メンバー名 (カンマ区切り)
-              <input
-                className="mt-1 w-full rounded border border-slate-300 p-2"
-                value={team.playersRaw}
-                onChange={(e) => updateTeam(i, { playersRaw: e.target.value })}
-                placeholder="例: かんた, しみず"
-              />
-            </label>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold">チーム設定</h2>
+            <div className="text-sm" />
           </div>
-        ))}
+
+          {teams.map((team, i) => {
+            const players = parsePlayers(team.playersRaw)
+            return (
+              <div
+                key={`team-form-${i}`}
+                className="grid gap-2 rounded border p-3 md:grid-cols-4 items-start"
+                style={{ borderColor: team.color, backgroundColor: '#fff' }}
+              >
+                <label className="text-xs text-slate-700">
+                  チーム名
+                  <input
+                    className="mt-1 w-full rounded border border-slate-300 p-2"
+                    value={team.name}
+                    onChange={(e) => updateTeam(i, { name: e.target.value })}
+                  />
+                </label>
+
+                <label className="text-xs text-slate-700">
+                  カラー
+                  <select
+                    className="mt-1 w-full rounded border border-slate-300 p-2"
+                    value={team.color}
+                    onChange={(e) => updateTeam(i, { color: e.target.value })}
+                  >
+                    {TEAM_COLOR_PRESETS.map((preset) => (
+                      <option key={preset.color} value={preset.color}>
+                        {preset.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="text-xs text-slate-700">
+                  <div className="mb-1">メンバー</div>
+                  <div className="space-y-1">
+                    {players.map((p, j) => (
+                      <div key={`member-${j}`} className="flex items-center gap-2">
+                        <input
+                          className="w-full rounded border border-slate-300 p-2 text-sm"
+                          value={p}
+                          onChange={(e) => {
+                            const next = [...players]
+                            next[j] = e.target.value
+                            updatePlayers(i, next)
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeMember(i, j)}
+                          className="rounded bg-rose-500 px-2 py-1 text-white text-sm"
+                          aria-label={`メンバー${j + 1}を削除`}
+                        >
+                          -
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => addMember(i)}
+                      className="mt-1 rounded bg-green-600 px-2 py-1 text-white text-sm"
+                    >
+                      メンバーを追加
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => removeTeam(i)}
+                    className="rounded bg-rose-600 px-2 py-1 text-white"
+                    aria-label={`チーム${i + 1}を削除`}
+                  >
+                    -
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+
+          <div>
+            <button
+              type="button"
+              onClick={addTeam}
+              className="rounded bg-green-600 px-3 py-1 text-sm text-white"
+            >
+              チームを追加
+            </button>
+          </div>
       </section>
 
       {error ? <p className="rounded bg-rose-100 p-2 text-sm text-rose-700">{error}</p> : null}
