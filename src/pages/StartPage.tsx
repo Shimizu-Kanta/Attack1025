@@ -11,7 +11,7 @@ type TeamForm = {
   playersRaw: string
 }
 
-const BOARD_SIZES = [5, 8, 16, 32]
+// board size can be any integer between 5 and 32
 
 const createTeamDefaults = (count: number): TeamForm[] =>
   Array.from({ length: count }).map((_, i) => ({
@@ -222,17 +222,14 @@ export const StartPage = () => {
       <section className="grid gap-4 rounded border border-slate-300 bg-white p-4 md:grid-cols-2">
         <label className="text-sm">
           盤面サイズ
-          <select
+          <input
+            type="number"
+            min={5}
+            max={32}
             className="mt-1 w-full rounded border border-slate-300 p-2"
             value={boardSize}
-            onChange={(e) => setBoardSize(Number(e.target.value))}
-          >
-            {BOARD_SIZES.map((size) => (
-              <option key={size} value={size}>
-                {size}x{size}
-              </option>
-            ))}
-          </select>
+            onChange={(e) => setBoardSize(Math.max(5, Math.min(32, Number(e.target.value) || 5)))}
+          />
         </label>
 
         <label className="text-sm">
