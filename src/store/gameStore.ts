@@ -468,9 +468,11 @@ export const useGameStore = create<GameStore>()(
         const nextPhase = canRestoreActivePhase(merged.phase, nextTeams, nextBoard)
           ? merged.phase
           : 'setup'
-        const selectedPanelId = nextBoard.some((panel) => panel.id === merged.selectedPanelId)
-          ? merged.selectedPanelId
-          : null
+        const selectedPanelId =
+          merged.selectedPanelId != null &&
+          nextBoard.some((panel) => panel.id === merged.selectedPanelId)
+            ? merged.selectedPanelId
+            : null
 
         return {
           ...merged,
@@ -480,7 +482,7 @@ export const useGameStore = create<GameStore>()(
           requests: Array.isArray(merged.requests) ? merged.requests : [],
           logs: Array.isArray(merged.logs) ? merged.logs : [],
           selectedPanelId,
-          startedAt: nextPhase === 'setup' ? null : merged.startedAt ?? null,
+          startedAt: nextPhase === 'setup' ? null : merged.startedAt,
           endedAt: nextPhase === 'ended' ? merged.endedAt ?? null : null,
         }
       },
