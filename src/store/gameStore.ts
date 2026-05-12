@@ -83,9 +83,28 @@ const canRestoreActivePhase = (
   phase: GamePhase,
   teams: Team[] | undefined,
   board: Panel[] | undefined,
+  startedAt: string | null,
+  endedAt: string | null,
 ) => {
-  if (phase === 'playing' || phase === 'ended') {
-    return Array.isArray(teams) && teams.length > 0 && Array.isArray(board) && board.length > 0
+  if (phase === 'playing') {
+    return (
+      Array.isArray(teams) &&
+      teams.length > 0 &&
+      Array.isArray(board) &&
+      board.length > 0 &&
+      startedAt !== null
+    )
+  }
+
+  if (phase === 'ended') {
+    return (
+      Array.isArray(teams) &&
+      teams.length > 0 &&
+      Array.isArray(board) &&
+      board.length > 0 &&
+      startedAt !== null &&
+      endedAt !== null
+    )
   }
   return true
 }
@@ -468,14 +487,20 @@ export const useGameStore = create<GameStore>()(
 
         const nextBoard = Array.isArray(merged.board) ? merged.board : []
         const nextTeams = Array.isArray(merged.teams) ? merged.teams : []
-        const mergedPhase = isGamePhase(merged.phase) ? merged.phase : currentState.phase
-        const nextPhase = canRestoreActivePhase(mergedPhase, nextTeams, nextBoard)
-          ? mergedPhase
-          : 'setup'
         const restoredStartedAt = typeof merged.startedAt === 'string' ? merged.startedAt : null
         const restoredEndedAt = typeof merged.endedAt === 'string' ? merged.endedAt : null
-        const startedAt = nextPhase === 'setup' ? null : restoredStartedAt ?? new Date().toISOString()
-        const endedAt = nextPhase === 'ended' ? restoredEndedAt ?? startedAt : null
+        const mergedPhase = isGamePhase(merged.phase) ? merged.phase : currentState.phase
+        const nextPhase = canRestoreActivePhase(
+          mergedPhase,
+          nextTeams,
+          nextBoard,
+          restoredStartedAt,
+          restoredEndedAt,
+        )
+          ? mergedPhase
+          : 'setup'
+        const startedAt = nextPhase === 'setup' ? null : restoredStartedAt
+        const endedAt = nextPhase === 'ended' ? restoredEndedAt : null
         const selectedPanelId =
           merged.selectedPanelId != null &&
           nextBoard.some((panel) => panel.id === merged.selectedPanelId)
