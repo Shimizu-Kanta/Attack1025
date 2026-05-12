@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { useMemo, useState, useEffect } from 'react'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { TEAM_COLOR_PRESETS } from '../data/teamColors'
 import { useGameStore } from '../store/gameStore'
 import type { GameSettings, RevealMode } from '../types/game'
@@ -16,15 +16,15 @@ const BOARD_SIZES = [5, 8, 16, 32]
 const createTeamDefaults = (count: number): TeamForm[] =>
   Array.from({ length: count }).map((_, i) => ({
     name: `チーム${i + 1}`,
-    color: TEAM_COLOR_PRESETS[i % TEAM_COLOR_PRESETS.length],
+    color: TEAM_COLOR_PRESETS[i % TEAM_COLOR_PRESETS.length].color,
     playersRaw: '',
   }))
 
 export const StartPage = () => {
-  const { startGame, phase } = useGameStore((state) => ({
-    startGame: state.startGame,
-    phase: state.phase,
-  }))
+  const navigate = useNavigate()
+  const startGame = useGameStore((state) => state.startGame)
+  const phase = useGameStore((state) => state.phase)
+  const resetGame = useGameStore((state) => state.resetGame)
 
   const [boardSize, setBoardSize] = useState(8)
   const [pokemonNumberStart, setPokemonNumberStart] = useState(1)
@@ -36,6 +36,13 @@ export const StartPage = () => {
   const [teamCount, setTeamCount] = useState(2)
   const [teams, setTeams] = useState<TeamForm[]>(createTeamDefaults(2))
   const [error, setError] = useState<string>('')
+
+  useEffect(() => {
+    console.log('StartPage initial phase:', phase)
+    if (phase === 'playing') {
+      console.warn('StartPage: restored phase is playing on open — check persisted state')
+    }
+  }, [phase])
 
   const requiredCount = boardSize * boardSize
   const previewPoolCount = useMemo(() => {
@@ -114,6 +121,7 @@ export const StartPage = () => {
             .filter(Boolean),
         })),
       )
+      navigate('/game')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'ゲーム開始に失敗しました。')
     }
@@ -122,6 +130,24 @@ export const StartPage = () => {
   return (
     <main className="mx-auto w-full max-w-6xl space-y-4 p-4">
       <h1 className="text-2xl font-bold text-slate-800">Attack1025 - 初期設定</h1>
+
+      <div className="mt-2">
+        <button
+          type="button"
+          className="rounded bg-rose-500 px-3 py-1 text-xs text-white"
+          onClick={() => {
+            try {
+              localStorage.removeItem('attack1025-game-state')
+            } catch (e) {
+              // ignore
+            }
+            resetGame()
+            window.location.reload()
+          }}
+        >
+          LocalStorage をクリアしてリセット
+        </button>
+      </div>
 
       <section className="grid gap-4 rounded border border-slate-300 bg-white p-4 md:grid-cols-2">
         <label className="text-sm">
@@ -255,9 +281,9 @@ export const StartPage = () => {
                 value={team.color}
                 onChange={(e) => updateTeam(i, { color: e.target.value })}
               >
-                {TEAM_COLOR_PRESETS.map((color) => (
-                  <option key={color} value={color}>
-                    {color}
+                {TEAM_COLOR_PRESETS.map((preset) => (
+                  <option key={preset.color} value={preset.color}>
+                    {preset.name}
                   </option>
                 ))}
               </select>

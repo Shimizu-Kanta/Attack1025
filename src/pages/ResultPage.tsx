@@ -3,27 +3,15 @@ import { Board } from '../components/Board'
 import { useGameStore } from '../store/gameStore'
 
 export const ResultPage = () => {
-  const {
-    phase,
-    settings,
-    teams,
-    board,
-    ranking,
-    logs,
-    resetGame,
-    setSelectedPanel,
-    selectedPanelId,
-  } = useGameStore((state) => ({
-    phase: state.phase,
-    settings: state.settings,
-    teams: state.teams,
-    board: state.board,
-    ranking: state.ranking,
-    logs: state.logs,
-    resetGame: state.resetGame,
-    setSelectedPanel: state.setSelectedPanel,
-    selectedPanelId: state.selectedPanelId,
-  }))
+  const phase = useGameStore((state) => state.phase)
+  const settings = useGameStore((state) => state.settings)
+  const teams = useGameStore((state) => state.teams)
+  const board = useGameStore((state) => state.board)
+  const ranking = useGameStore((state) => state.ranking)
+  const logs = useGameStore((state) => state.logs)
+  const resetGame = useGameStore((state) => state.resetGame)
+  const setSelectedPanel = useGameStore((state) => state.setSelectedPanel)
+  const selectedPanelId = useGameStore((state) => state.selectedPanelId)
 
   if (phase === 'setup') {
     return <Navigate to="/" replace />
