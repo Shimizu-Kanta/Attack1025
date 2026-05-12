@@ -182,6 +182,11 @@ export const useGameStore = create<GameStore>()(
           return { ok: false, message: '対象パネルが見つかりません。' }
         }
 
+        const teamExists = state.teams.some((t) => t.id === teamId)
+        if (!teamExists) {
+          return { ok: false, message: '申請チームが見つかりません。' }
+        }
+
         const canRequest = state.availablePanels().some((item) => item.id === panelId)
         if (!canRequest) {
           return { ok: false, message: 'このパネルは現在申請できません。' }
