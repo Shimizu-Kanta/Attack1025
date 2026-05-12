@@ -83,8 +83,8 @@ export const GamePage = () => {
   }
 
   return (
-    <main className="mx-auto w-full max-w-[1800px] space-y-3 p-3">
-      <header className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-300 bg-white p-3">
+    <main className="mx-auto w-full max-w-[1800px] min-h-screen space-y-3 p-3 pb-24 flex flex-col">
+      <header className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-300 bg-white p-3 h-16">
         <h1 className="text-xl font-bold text-slate-800">
           Attack1025 ゲーム画面 ({settings.boardSize}x{settings.boardSize})
         </h1>
@@ -115,39 +115,27 @@ export const GamePage = () => {
         </div>
       </header>
 
-      <div className="grid gap-3 lg:grid-cols-[280px_1fr_420px]">
-        <aside className="space-y-3">
-          <TeamPanel teams={teams} board={board} />
+      <div className="grid gap-3 lg:grid-cols-[280px_1fr_420px] flex-1 min-h-0" style={{ height: `calc(100vh - 4rem - 6rem)` }}>
+        <aside style={{ position: 'sticky', top: '4rem', height: 'calc(100vh - 4rem - 6rem)', overflow: 'auto' }} className="space-y-3">
+          <div style={{ paddingRight: 8 }}>
+            <TeamPanel teams={teams} board={board} />
+          </div>
         </aside>
 
-        <section className="space-y-3">
-          <Board
-            board={board}
-            boardSize={settings.boardSize}
-            teams={teams}
-            requests={requests}
-            selectedPanelId={selectedPanelId}
-            onSelectPanel={setSelectedPanel}
-          />
-          <section className="rounded border border-slate-300 bg-white p-3 text-sm">
-            <h2 className="font-bold text-slate-700">選択中パネル</h2>
-            {selectedPanel ? (
-              <div className="mt-1 grid gap-1 text-xs">
-                <p>
-                  座標: ({selectedPanel.x}, {selectedPanel.y})
-                </p>
-                <p>図鑑番号: {selectedPanel.revealStatus === 'revealed' ? selectedPanel.pokemonNumber : '非公開'}</p>
-                <p>公開状態: {selectedPanel.revealStatus}</p>
-                <p>所有チーム: {teams.find((team) => team.id === selectedPanel.ownerTeamId)?.name ?? 'なし'}</p>
-                <p>申請状態: {selectedPanel.requestStatus}</p>
-              </div>
-            ) : (
-              <p className="mt-1 text-xs text-slate-500">盤面からパネルを選択してください。</p>
-            )}
-          </section>
+        <section style={{ height: 'calc(100vh - 4rem - 6rem)', overflow: 'auto' }} className="space-y-3">
+          <div style={{ minHeight: '100%' }}>
+            <Board
+              board={board}
+              boardSize={settings.boardSize}
+              teams={teams}
+              requests={requests}
+              selectedPanelId={selectedPanelId}
+              onSelectPanel={setSelectedPanel}
+            />
+          </div>
         </section>
 
-        <aside className="space-y-3">
+        <aside style={{ position: 'sticky', top: '4rem', height: 'calc(100vh - 4rem - 6rem)', overflow: 'auto' }} className="space-y-3">
           {role === 'pl' ? (
             <section className="space-y-3 rounded border border-slate-300 bg-white p-3">
               <h2 className="text-sm font-bold text-slate-700">PL: 取得申請</h2>
@@ -311,6 +299,28 @@ export const GamePage = () => {
             </section>
           )}
         </aside>
+      </div>
+
+      {/* 固定フッター: 選択中パネル */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-300 h-24">
+        <div className="mx-auto max-w-[1800px] p-3 h-full">
+          <section className="rounded bg-white text-sm">
+            <h2 className="font-bold text-slate-700">選択中パネル</h2>
+            {selectedPanel ? (
+              <div className="mt-1 grid gap-1 text-xs">
+                <p>
+                  座標: ({selectedPanel.x}, {selectedPanel.y})
+                </p>
+                <p>図鑑番号: {selectedPanel.revealStatus === 'revealed' ? selectedPanel.pokemonNumber : '非公開'}</p>
+                <p>公開状態: {selectedPanel.revealStatus}</p>
+                <p>所有チーム: {teams.find((team) => team.id === selectedPanel.ownerTeamId)?.name ?? 'なし'}</p>
+                <p>申請状態: {selectedPanel.requestStatus}</p>
+              </div>
+            ) : (
+              <p className="mt-1 text-xs text-slate-500">盤面からパネルを選択してください。</p>
+            )}
+          </section>
+        </div>
       </div>
     </main>
   )

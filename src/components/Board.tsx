@@ -1,3 +1,4 @@
+import React, { useRef, useState, useEffect } from 'react'
 import type { Panel, Team, CaptureRequest } from '../types/game'
 
 type BoardProps = {
@@ -32,8 +33,92 @@ export const Board = ({
     return `conic-gradient(${parts.join(',')})`
   }
 
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const isDraggingRef = useRef(false)
+  const startRef = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 })
+  const [isPointerDown, setIsPointerDown] = useState(false)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    let activePointerId: number | null = null
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.isPrimary === false) return
+      isDraggingRef.current = false
+      setIsPointerDown(true)
+      activePointerId = e.pointerId
+      try {
+        (el as Element).setPointerCapture?.(activePointerId)
+      } catch (err) {
+        // ignore
+      }
+      startRef.current = { x: e.clientX, y: e.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop }
+    }
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (!isPointerDown) return
+      if (activePointerId !== null && e.pointerId !== activePointerId) return
+      const dx = e.clientX - startRef.current.x
+      const dy = e.clientY - startRef.current.y
+      if (!isDraggingRef.current && Math.hypot(dx, dy) > 5) {
+        isDraggingRef.current = true
+      }
+      if (isDraggingRef.current) {
+        el.scrollLeft = startRef.current.scrollLeft - dx
+        el.scrollTop = startRef.current.scrollTop - dy
+        e.preventDefault()
+      }
+    }
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (activePointerId !== null && e.pointerId !== activePointerId) return
+      // if not dragging, try to detect clicked panel by pointer position
+      if (!isDraggingRef.current) {
+        try {
+          const target = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null
+          const btn = target?.closest('button[data-panel-id]') as HTMLButtonElement | null
+          if (btn) {
+            const pid = btn.getAttribute('data-panel-id')
+            if (pid) onSelectPanel(pid)
+          }
+        } catch (err) {
+          // ignore
+        }
+      }
+
+      setIsPointerDown(false)
+      setTimeout(() => {
+        isDraggingRef.current = false
+      }, 0)
+      try {
+        (el as Element).releasePointerCapture?.(e.pointerId)
+      } catch (err) {
+        // ignore
+      }
+      activePointerId = null
+    }
+
+    el.addEventListener('pointerdown', onPointerDown)
+    el.addEventListener('pointermove', onPointerMove)
+    el.addEventListener('pointerup', onPointerUp)
+    el.addEventListener('pointercancel', onPointerUp)
+
+    return () => {
+      el.removeEventListener('pointerdown', onPointerDown)
+      el.removeEventListener('pointermove', onPointerMove)
+      el.removeEventListener('pointerup', onPointerUp)
+      el.removeEventListener('pointercancel', onPointerUp)
+    }
+  }, [isPointerDown])
+
   return (
-    <div className="overflow-auto rounded border border-slate-300 bg-white p-2">
+    <div
+      ref={containerRef}
+      className="overflow-auto rounded border border-slate-300 bg-white p-2"
+      style={{ cursor: isPointerDown ? 'grabbing' : 'grab', height: '100%', touchAction: 'none' as const }}
+    >
       <div
         className="grid gap-1"
         style={{
@@ -80,7 +165,20 @@ export const Board = ({
             >
                 <button
                   type="button"
-                  onClick={() => onSelectPanel(panel.id)}
+                  data-panel-id={panel.id}
+                  onClick={() => {
+                    // fallback for environments where pointerup might not fire
+                    if (isDraggingRef.current) return
+                    onSelectPanel(panel.id)
+                  }}
+                  onPointerUp={(e) => {
+                    // prefer pointerup for reliable detection alongside drag handling
+                    if (isDraggingRef.current) return
+                    // only react to primary button
+                    // @ts-ignore - PointerEvent type is available in DOM
+                    if (e && typeof (e as PointerEvent).button === 'number' && (e as PointerEvent).button !== 0) return
+                    onSelectPanel(panel.id)
+                  }}
                   className={`w-full h-full aspect-square rounded border text-[10px] font-semibold leading-tight transition hover:border-slate-500 relative`}
                   style={{
                     backgroundColor:
@@ -91,7 +189,11 @@ export const Board = ({
                     padding: 0,
                     overflow: 'hidden',
                   }}
-                  title={`No.${panel.pokemonNumber} (${panel.x},${panel.y})`}
+                  title={
+                    panel.revealStatus === 'revealed'
+                      ? `No.${panel.pokemonNumber} (${panel.x},${panel.y})`
+                      : `非公開 (${panel.x},${panel.y})`
+                  }
                 >
                   {panel.revealStatus === 'revealed' ? `#${panel.pokemonNumber}` : '?'}
 
