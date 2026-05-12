@@ -52,7 +52,7 @@ type GameStore = {
 
   startGame: (settings: GameSettings, teams: SetupTeamInput[]) => void
   submitRequest: (input: SubmitRequestInput) => { ok: boolean; message?: string }
-  approveRequest: (requestId: string) => void
+  approveRequest: (requestId: string, bonusRadius?: number) => void
   rejectRequest: (requestId: string, withPenalty: boolean) => void
   manualAcquirePanel: (panelId: string, teamId: string) => void
   endGame: () => void
@@ -245,7 +245,7 @@ export const useGameStore = create<GameStore>()(
         return { ok: true }
       },
 
-      approveRequest: (requestId) => {
+      approveRequest: (requestId, bonusRadius = 0) => {
         const state = get()
         const request = state.requests.find((item) => item.id === requestId)
         if (!request || request.status !== 'pending') {
@@ -262,60 +262,75 @@ export const useGameStore = create<GameStore>()(
           return
         }
 
-        let nextBoard: Panel[] = state.board.map((item): Panel =>
-          item.id === panel.id
-            ? {
-                ...item,
-                ownerTeamId: team.id,
-                revealStatus: 'revealed',
-                requestStatus: 'none',
-                pendingRequestIds: [],
-              }
+        // start with mapping board to copy
+        let nextBoard: Panel[] = state.board.map((item) => ({ ...item }))
+
+        // determine which panels will be acquired: the target panel plus surrounding within bonusRadius
+        const acquiredIds = new Set<string>()
+        const origin = panel
+        const radius = Math.max(0, Math.min(5, Math.floor(bonusRadius)))
+        for (const p of nextBoard) {
+          const dx = Math.abs(p.x - origin.x)
+          const dy = Math.abs(p.y - origin.y)
+          if (dx <= radius && dy <= radius) {
+            // do not acquire panels that are already owned
+            if (!p.ownerTeamId) {
+              acquiredIds.add(p.id)
+            }
+          }
+        }
+
+        // assign ownership for acquired panels
+        nextBoard = nextBoard.map((item) =>
+          acquiredIds.has(item.id)
+            ? { ...item, ownerTeamId: team.id, revealStatus: 'revealed', requestStatus: 'none', pendingRequestIds: [] }
             : item,
         )
 
-        const revealResult = revealAroundPanel(nextBoard, state.settings.boardSize, panel.id)
-        nextBoard = revealResult.board
+        // reveal the outer ring (radius + 1) around origin
+        const revealRadius = radius + 1
+        const revealIds = new Set<string>()
+        for (const p of nextBoard) {
+          const dx = Math.abs(p.x - origin.x)
+          const dy = Math.abs(p.y - origin.y)
+          const maxd = Math.max(dx, dy)
+          if (maxd === revealRadius) {
+            revealIds.add(p.id)
+          }
+        }
+        nextBoard = nextBoard.map((item) =>
+          revealIds.has(item.id) ? { ...item, revealStatus: 'revealed' } : item,
+        )
 
-        const flipResult = applyFlips(nextBoard, state.settings.boardSize, panel.id, team.id)
-        nextBoard = flipResult.board
+        // apply flips for each acquired panel (chain captures)
+        for (const id of Array.from(acquiredIds)) {
+          const flipResult = applyFlips(nextBoard, state.settings.boardSize, id, team.id)
+          nextBoard = flipResult.board
+        }
 
+        // update requests: approved for this request, cancelled for other pending requests on any acquired panel
         const nextRequests = state.requests.map((item) => {
           if (item.id === request.id) {
-            return {
-              ...item,
-              status: 'approved' as const,
-              reviewedAt: new Date().toISOString(),
-            }
+            return { ...item, status: 'approved' as const, reviewedAt: new Date().toISOString() }
           }
-
-          if (item.panelId === request.panelId && item.status === 'pending') {
-            return {
-              ...item,
-              status: 'cancelled' as const,
-              reviewedAt: new Date().toISOString(),
-            }
+          if (acquiredIds.has(item.panelId) && item.status === 'pending') {
+            return { ...item, status: 'cancelled' as const, reviewedAt: new Date().toISOString() }
           }
-
           return item
         })
 
-        const logs = [
+        const logs: GameLog[] = [
           createLog('request_approved', `${team.name} の申請を承認 (No.${panel.pokemonNumber})`),
-          createLog('panel_acquired', `${team.name} が No.${panel.pokemonNumber} を取得`),
           ...state.logs,
         ]
 
-        if (revealResult.revealedCount > 0) {
-          logs.unshift(
-            createLog('panel_revealed', `取得により ${revealResult.revealedCount} マス公開`),
-          )
+        // add acquired logs
+        logs.unshift(createLog('panel_acquired', `${team.name} が No.${panel.pokemonNumber} を取得`))
+        if (acquiredIds.size > 1) {
+          logs.unshift(createLog('panel_acquired', `${team.name} が周囲 ${radius} マスをまとめて取得 (${acquiredIds.size} マス)`))
         }
-
-        if (flipResult.flippedPanelIds.length > 0) {
-          logs.unshift(
-            createLog('panel_flipped', `${flipResult.flippedPanelIds.length} マス反転`),
-          )
+        if (revealIds.size > 0) {
+          logs.unshift(createLog('panel_revealed', `周囲 ${revealRadius} マス目を ${revealIds.size} マス公開`))
         }
 
         set({
