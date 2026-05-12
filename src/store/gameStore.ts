@@ -79,6 +79,39 @@ const createLog = (type: GameLog['type'], message: string): GameLog => ({
   createdAt: new Date().toISOString(),
 })
 
+const canRestoreActivePhase = (
+  phase: GamePhase,
+  teams: Team[] | undefined,
+  board: Panel[] | undefined,
+  startedAt: string | null,
+  endedAt: string | null,
+) => {
+  if (phase === 'playing') {
+    return (
+      Array.isArray(teams) &&
+      teams.length > 0 &&
+      Array.isArray(board) &&
+      board.length > 0 &&
+      startedAt !== null
+    )
+  }
+
+  if (phase === 'ended') {
+    return (
+      Array.isArray(teams) &&
+      teams.length > 0 &&
+      Array.isArray(board) &&
+      board.length > 0 &&
+      startedAt !== null &&
+      endedAt !== null
+    )
+  }
+  return true
+}
+
+const isGamePhase = (value: unknown): value is GamePhase =>
+  value === 'setup' || value === 'playing' || value === 'ended'
+
 export const useGameStore = create<GameStore>()(
   persist(
     (set, get) => ({
@@ -104,6 +137,11 @@ export const useGameStore = create<GameStore>()(
       ranking: () => rankTeams(get().board, get().teams),
 
       startGame: (settings, teamInputs) => {
+        const current = get()
+        if (current.phase === 'playing') {
+          return
+        }
+
         const pool = createPokemonNumberPool(
           settings.pokemonNumberStart,
           settings.pokemonNumberEnd,
@@ -380,34 +418,110 @@ export const useGameStore = create<GameStore>()(
       },
 
       endGame: () => {
-        const state = get()
-        set({
-          phase: 'ended',
-          endedAt: new Date().toISOString(),
-          logs: [createLog('game_end', 'GMがゲームを終了しました'), ...state.logs],
+        set((state) => {
+          if (state.phase !== 'playing') {
+            return state
+          }
+
+          return {
+            ...state,
+            phase: 'ended',
+            endedAt: new Date().toISOString(),
+            logs: [createLog('game_end', 'GMがゲームを終了しました'), ...state.logs],
+          }
         })
       },
 
       resetGame: () => {
-        set({
-          phase: 'setup',
-          settings: { ...initialSettings, seed: createDefaultSeed() },
-          teams: [],
-          board: [],
-          requests: [],
-          logs: [],
-          selectedPanelId: null,
-          startedAt: null,
-          endedAt: null,
+        set((state) => {
+          const alreadyReset =
+            state.phase === 'setup' &&
+            state.teams.length === 0 &&
+            state.board.length === 0 &&
+            state.requests.length === 0 &&
+            state.logs.length === 0 &&
+            state.selectedPanelId === null &&
+            state.startedAt === null &&
+            state.endedAt === null
+
+          if (alreadyReset) {
+            return state
+          }
+
+          return {
+            ...state,
+            phase: 'setup',
+            settings: { ...initialSettings, seed: createDefaultSeed() },
+            teams: [],
+            board: [],
+            requests: [],
+            logs: [],
+            selectedPanelId: null,
+            startedAt: null,
+            endedAt: null,
+          }
         })
       },
 
       setSelectedPanel: (panelId) => {
-        set({ selectedPanelId: panelId })
+        set((state) => {
+          if (state.selectedPanelId === panelId) {
+            return state
+          }
+          return { ...state, selectedPanelId: panelId }
+        })
       },
     }),
     {
       name: STORAGE_KEY,
+      merge: (persistedState, currentState) => {
+        if (!persistedState || typeof persistedState !== 'object') {
+          return currentState
+        }
+
+        const persisted = persistedState as Partial<GameStore>
+        const merged = {
+          ...currentState,
+          ...persisted,
+        }
+
+        const nextBoard = Array.isArray(merged.board) ? merged.board : []
+        const nextTeams = Array.isArray(merged.teams) ? merged.teams : []
+        const restoredStartedAt = typeof merged.startedAt === 'string' ? merged.startedAt : null
+        const restoredEndedAt = typeof merged.endedAt === 'string' ? merged.endedAt : null
+        const mergedPhase = isGamePhase(merged.phase) ? merged.phase : currentState.phase
+        const nextPhase = canRestoreActivePhase(
+          mergedPhase,
+          nextTeams,
+          nextBoard,
+          restoredStartedAt,
+          restoredEndedAt,
+        )
+          ? mergedPhase
+          : 'setup'
+        const phaseChangedOnRestore = nextPhase !== mergedPhase
+        const startedAt =
+          phaseChangedOnRestore || nextPhase === 'setup' ? null : restoredStartedAt
+        const endedAt = phaseChangedOnRestore || nextPhase !== 'ended' ? null : restoredEndedAt
+        const selectedPanelId =
+          merged.selectedPanelId !== null &&
+          merged.selectedPanelId !== undefined &&
+          nextBoard.some((panel) => panel.id === merged.selectedPanelId)
+            ? merged.selectedPanelId
+            : null
+
+        return {
+          ...merged,
+          phase: nextPhase,
+          board: nextBoard,
+          teams: nextTeams,
+          requests: Array.isArray(merged.requests) ? merged.requests : [],
+          logs: Array.isArray(merged.logs) ? merged.logs : [],
+          selectedPanelId,
+          startedAt,
+          endedAt,
+        }
+      },
       partialize: (state) => ({
         phase: state.phase,
         settings: state.settings,
