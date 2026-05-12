@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import { TEAM_COLOR_PRESETS } from '../data/teamColors'
 import { useGameStore } from '../store/gameStore'
 import type { GameSettings, RevealMode } from '../types/game'
@@ -21,7 +21,6 @@ const createTeamDefaults = (count: number): TeamForm[] =>
   }))
 
 export const StartPage = () => {
-  const navigate = useNavigate()
   const { startGame, phase } = useGameStore((state) => ({
     startGame: state.startGame,
     phase: state.phase,
@@ -115,7 +114,6 @@ export const StartPage = () => {
             .filter(Boolean),
         })),
       )
-      navigate('/game')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'ゲーム開始に失敗しました。')
     }

@@ -1,9 +1,8 @@
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import { Board } from '../components/Board'
 import { useGameStore } from '../store/gameStore'
 
 export const ResultPage = () => {
-  const navigate = useNavigate()
   const {
     phase,
     settings,
@@ -84,7 +83,6 @@ export const ResultPage = () => {
         type="button"
         onClick={() => {
           resetGame()
-          navigate('/')
         }}
         className="rounded bg-blue-600 px-4 py-2 font-semibold text-white"
       >

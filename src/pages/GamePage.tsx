@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import { Board } from '../components/Board'
 import { GameLogPanel } from '../components/GameLogPanel'
 import { RequestList } from '../components/RequestList'
@@ -7,7 +7,6 @@ import { TeamPanel } from '../components/TeamPanel'
 import { useGameStore } from '../store/gameStore'
 
 export const GamePage = () => {
-  const navigate = useNavigate()
   const {
     phase,
     board,
@@ -127,7 +126,6 @@ export const GamePage = () => {
             type="button"
             onClick={() => {
               endGame()
-              navigate('/result')
             }}
             className="rounded bg-rose-600 px-3 py-1 text-sm text-white"
           >
