@@ -90,6 +90,9 @@ const canRestoreActivePhase = (
   return true
 }
 
+const isGamePhase = (value: unknown): value is GamePhase =>
+  value === 'setup' || value === 'playing' || value === 'ended'
+
 export const useGameStore = create<GameStore>()(
   persist(
     (set, get) => ({
@@ -465,9 +468,14 @@ export const useGameStore = create<GameStore>()(
 
         const nextBoard = Array.isArray(merged.board) ? merged.board : []
         const nextTeams = Array.isArray(merged.teams) ? merged.teams : []
-        const nextPhase = canRestoreActivePhase(merged.phase, nextTeams, nextBoard)
-          ? merged.phase
+        const mergedPhase = isGamePhase(merged.phase) ? merged.phase : currentState.phase
+        const nextPhase = canRestoreActivePhase(mergedPhase, nextTeams, nextBoard)
+          ? mergedPhase
           : 'setup'
+        const restoredStartedAt = typeof merged.startedAt === 'string' ? merged.startedAt : null
+        const restoredEndedAt = typeof merged.endedAt === 'string' ? merged.endedAt : null
+        const startedAt = nextPhase === 'setup' ? null : restoredStartedAt ?? new Date().toISOString()
+        const endedAt = nextPhase === 'ended' ? restoredEndedAt ?? startedAt : null
         const selectedPanelId =
           merged.selectedPanelId != null &&
           nextBoard.some((panel) => panel.id === merged.selectedPanelId)
@@ -482,8 +490,8 @@ export const useGameStore = create<GameStore>()(
           requests: Array.isArray(merged.requests) ? merged.requests : [],
           logs: Array.isArray(merged.logs) ? merged.logs : [],
           selectedPanelId,
-          startedAt: nextPhase === 'setup' ? null : merged.startedAt,
-          endedAt: nextPhase === 'ended' ? merged.endedAt ?? null : null,
+          startedAt,
+          endedAt,
         }
       },
       partialize: (state) => ({
