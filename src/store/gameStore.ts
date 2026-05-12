@@ -499,10 +499,13 @@ export const useGameStore = create<GameStore>()(
         )
           ? mergedPhase
           : 'setup'
-        const startedAt = nextPhase === 'setup' ? null : restoredStartedAt
-        const endedAt = nextPhase === 'ended' ? restoredEndedAt : null
+        const phaseChangedOnRestore = nextPhase !== mergedPhase
+        const startedAt =
+          phaseChangedOnRestore || nextPhase === 'setup' ? null : restoredStartedAt
+        const endedAt = phaseChangedOnRestore || nextPhase !== 'ended' ? null : restoredEndedAt
         const selectedPanelId =
-          merged.selectedPanelId != null &&
+          merged.selectedPanelId !== null &&
+          merged.selectedPanelId !== undefined &&
           nextBoard.some((panel) => panel.id === merged.selectedPanelId)
             ? merged.selectedPanelId
             : null
