@@ -147,7 +147,12 @@ export const useGameStore = create<GameStore>()(
           settings.pokemonNumberEnd,
           settings.excludedPokemonNumbers,
         )
-        const board = createBoard(settings.boardSize, settings.seed, pool)
+        const board = createBoard(
+          settings.boardSize,
+          settings.seed,
+          pool,
+          settings.initialOpenCount ?? 1,
+        )
 
         const teams: Team[] = teamInputs.map((team, index) => ({
           id: `team-${index + 1}`,

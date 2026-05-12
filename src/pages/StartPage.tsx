@@ -33,6 +33,7 @@ export const StartPage = () => {
   const [seed, setSeed] = useState(createDefaultSeed())
   const [revealMode, setRevealMode] = useState<RevealMode>('afterApproval')
   const [penaltyThreshold, setPenaltyThreshold] = useState(2)
+  const [initialOpenCount, setInitialOpenCount] = useState(1)
   const [teams, setTeams] = useState<TeamForm[]>(createTeamDefaults(2))
   const [error, setError] = useState<string>('')
 
@@ -157,6 +158,7 @@ export const StartPage = () => {
       excludedPokemonNumbers,
       revealMode,
       penaltyThreshold,
+      initialOpenCount,
     }
 
     // 重複カラーのチェック
@@ -169,6 +171,11 @@ export const StartPage = () => {
 
     if (teams.length <  2) {
       setError('チームは2つ以上必要です。')
+      return
+    }
+
+    if (previewPoolCount < requiredCount) {
+      setError('利用可能な図鑑番号が足りません。除外設定と範囲を確認してください。')
       return
     }
 
@@ -300,6 +307,18 @@ export const StartPage = () => {
             className="mt-1 w-full rounded border border-slate-300 p-2"
             value={penaltyThreshold}
             onChange={(e) => setPenaltyThreshold(Math.max(1, Number(e.target.value)))}
+          />
+        </label>
+
+        <label className="text-sm">
+          初期公開マス数
+          <input
+            type="number"
+            min={1}
+            max={requiredCount}
+            className="mt-1 w-full rounded border border-slate-300 p-2"
+            value={initialOpenCount}
+            onChange={(e) => setInitialOpenCount(Math.max(1, Math.min(requiredCount, Number(e.target.value) || 1)))}
           />
         </label>
 

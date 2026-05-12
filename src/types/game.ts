@@ -10,6 +10,7 @@ export type GameSettings = {
   excludedPokemonNumbers: number[]
   revealMode: RevealMode
   penaltyThreshold: number
+  initialOpenCount?: number
 }
 
 export type Team = {
