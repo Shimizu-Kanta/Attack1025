@@ -402,6 +402,7 @@ export const useGameStore = create<GameStore>()(
           }
 
           return {
+            ...state,
             phase: 'ended',
             endedAt: new Date().toISOString(),
             logs: [createLog('game_end', 'GMがゲームを終了しました'), ...state.logs],
@@ -426,6 +427,7 @@ export const useGameStore = create<GameStore>()(
           }
 
           return {
+            ...state,
             phase: 'setup',
             settings: { ...initialSettings, seed: createDefaultSeed() },
             teams: [],
@@ -444,7 +446,7 @@ export const useGameStore = create<GameStore>()(
           if (state.selectedPanelId === panelId) {
             return state
           }
-          return { selectedPanelId: panelId }
+          return { ...state, selectedPanelId: panelId }
         })
       },
     }),
