@@ -54,30 +54,67 @@ export const Board = ({
             ),
           )
 
-          const gradient = panel.requestStatus === 'pending' ? buildGradient(requestTeamColors) : undefined
+          const bonusTeamColors = Array.from(
+            new Set(
+              teams
+                .filter((t) => (t.bonusNumbers || []).includes(panel.pokemonNumber))
+                .map((t) => t.color),
+            ),
+          )
+
+          // Do not show outer effects for already owned panels
+          // Outer gradient for request; bonus will be rendered as inner circle
+          const outerGradient = owner
+            ? undefined
+            : panel.highlightRequest
+            ? buildGradient(requestTeamColors)
+            : undefined
+
+          const innerBonusGradient = !owner && panel.highlightBonus && bonusTeamColors.length > 0 ? buildGradient(bonusTeamColors) : undefined
 
           return (
             <div
               key={panel.id}
               className={`aspect-square rounded ${selected ? 'ring-2 ring-blue-500' : ''}`}
-              style={{ padding: gradient ? '3px' : undefined, background: gradient, borderRadius: '0.375rem' }}
+              style={{ padding: outerGradient ? '3px' : undefined, background: outerGradient, borderRadius: '0.375rem' }}
             >
-              <button
-                type="button"
-                onClick={() => onSelectPanel(panel.id)}
-                className={`w-full h-full aspect-square rounded border text-[10px] font-semibold leading-tight transition hover:border-slate-500`}
-                style={{
-                  backgroundColor:
-                    owner?.color ??
-                    (panel.revealStatus === 'revealed' ? 'rgb(241 245 249)' : 'rgb(15 23 42)'),
-                  color: owner ? '#fff' : panel.revealStatus === 'revealed' ? '#0f172a' : '#94a3b8',
-                  borderColor: owner?.color ?? 'rgb(148 163 184)',
-                  padding: 0,
-                }}
-                title={`No.${panel.pokemonNumber} (${panel.x},${panel.y})`}
-              >
-                {panel.revealStatus === 'revealed' ? `#${panel.pokemonNumber}` : '?'}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => onSelectPanel(panel.id)}
+                  className={`w-full h-full aspect-square rounded border text-[10px] font-semibold leading-tight transition hover:border-slate-500 relative`}
+                  style={{
+                    backgroundColor:
+                      owner?.color ??
+                      (panel.revealStatus === 'revealed' ? 'rgb(241 245 249)' : 'rgb(15 23 42)'),
+                    color: owner ? '#fff' : panel.revealStatus === 'revealed' ? '#0f172a' : '#94a3b8',
+                    borderColor: owner?.color ?? 'rgb(148 163 184)',
+                    padding: 0,
+                    overflow: 'hidden',
+                  }}
+                  title={`No.${panel.pokemonNumber} (${panel.x},${panel.y})`}
+                >
+                  {panel.revealStatus === 'revealed' ? `#${panel.pokemonNumber}` : '?'}
+
+                  {innerBonusGradient && (
+                    <span
+                      aria-hidden
+                      style={{
+                        position: 'absolute',
+                        left: '50%',
+                        top: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        width: '58%',
+                        height: '58%',
+                        borderRadius: '9999px',
+                        background: innerBonusGradient,
+                        opacity: 0.28,
+                        zIndex: 0,
+                        pointerEvents: 'none',
+                      }}
+                    />
+                  )}
+                  <span style={{ position: 'relative', zIndex: 10 }}>{/* keep text above inner effect */}</span>
+                </button>
             </div>
           )
         })}

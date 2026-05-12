@@ -18,6 +18,7 @@ export type Team = {
   name: string
   color: string
   players: string[]
+  bonusNumbers?: number[]
   penaltyPoints: number
 }
 
@@ -30,6 +31,9 @@ export type Panel = {
   revealStatus: 'hidden' | 'revealed'
   requestStatus: 'none' | 'pending'
   pendingRequestIds: string[]
+  highlightType?: 'none' | 'request' | 'bonus'
+  highlightRequest?: boolean
+  highlightBonus?: boolean
 }
 
 export type CaptureRequestStatus =

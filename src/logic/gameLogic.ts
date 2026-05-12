@@ -132,24 +132,9 @@ export const revealAroundPanel = (
 }
 
 export const getAvailablePanels = (board: Panel[], boardSize: number): Panel[] => {
-  const hasOwned = board.some((panel) => panel.ownerTeamId)
-
-  if (!hasOwned) {
-    return board.filter(
-      (panel) => panel.revealStatus === 'revealed' && panel.ownerTeamId === null,
-    )
-  }
-
-  return board.filter((panel) => {
-    if (panel.revealStatus !== 'revealed' || panel.ownerTeamId !== null) {
-      return false
-    }
-
-    return DIRECTIONS.some(([dx, dy]) => {
-      const neighbor = getPanelByPosition(board, boardSize, panel.x + dx, panel.y + dy)
-      return Boolean(neighbor?.ownerTeamId)
-    })
-  })
+  // All revealed and unowned panels are available for request/acquisition.
+  // Previously availability required adjacency to owned panels after initial captures.
+  return board.filter((panel) => panel.revealStatus === 'revealed' && panel.ownerTeamId === null)
 }
 
 export const applyFlips = (

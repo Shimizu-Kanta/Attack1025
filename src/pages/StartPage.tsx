@@ -9,6 +9,7 @@ type TeamForm = {
   name: string
   color: string
   playersRaw: string
+  bonusRaw?: string
 }
 
 // board size can be any integer between 5 and 32
@@ -132,9 +133,19 @@ export const StartPage = () => {
     updateTeam(teamIndex, { playersRaw: players.join(',') })
   }
 
+  const parseBonus = (bonusRaw: string) =>
+    bonusRaw
+      .split(',')
+      .map((s) => Number(s.trim()))
+      .filter((n) => Number.isInteger(n) && n >= 1 && n <= 1025)
+
   const addMember = (teamIndex: number) => {
     const players = parsePlayers(teams[teamIndex].playersRaw)
     updatePlayers(teamIndex, [...players, ''])
+  }
+
+  const updateBonus = (teamIndex: number, bonuses: number[]) => {
+    updateTeam(teamIndex, { bonusRaw: bonuses.join(',') })
   }
 
   const removeMember = (teamIndex: number, memberIndex: number) => {
@@ -189,6 +200,7 @@ export const StartPage = () => {
             .split(',')
             .map((name) => name.trim())
             .filter(Boolean),
+          bonusNumbers: parseBonus(team.bonusRaw ?? ''),
         })),
       )
       navigate('/game')
@@ -396,6 +408,16 @@ export const StartPage = () => {
                   </div>
                 </div>
 
+                <label className="text-xs text-slate-700">
+                  ボーナスマス (カンマ区切りの図鑑番号)
+                  <input
+                    className="mt-1 w-full rounded border border-slate-300 p-2 text-sm"
+                    value={team.bonusRaw ?? ''}
+                    onChange={(e) => updateTeam(i, { bonusRaw: e.target.value })}
+                    placeholder="例: 25,150"
+                  />
+                </label>
+
                 <div className="flex justify-end">
                   <button
                     type="button"
@@ -433,3 +455,5 @@ export const StartPage = () => {
     </main>
   )
 }
+
+export default StartPage
