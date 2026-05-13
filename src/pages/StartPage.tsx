@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { TEAM_COLOR_PRESETS } from '../data/teamColors'
 import { useGameStore } from '../store/gameStore'
@@ -24,7 +24,6 @@ export const StartPage = () => {
   const navigate = useNavigate()
   const startGame = useGameStore((state) => state.startGame)
   const phase = useGameStore((state) => state.phase)
-  const resetGame = useGameStore((state) => state.resetGame)
 
   const [boardSize, setBoardSize] = useState(8)
   const [pokemonNumberStart, setPokemonNumberStart] = useState(1)
@@ -35,13 +34,6 @@ export const StartPage = () => {
   const [penaltyThreshold, setPenaltyThreshold] = useState(2)
   const [teams, setTeams] = useState<TeamForm[]>(createTeamDefaults(2))
   const [error, setError] = useState<string>('')
-
-  useEffect(() => {
-    console.log('StartPage initial phase:', phase)
-    if (phase === 'playing') {
-      console.warn('StartPage: restored phase is playing on open — check persisted state')
-    }
-  }, [phase])
 
   const requiredCount = boardSize * boardSize
   const previewPoolCount = useMemo(() => {
@@ -68,30 +60,15 @@ export const StartPage = () => {
     return <Navigate to="/result" replace />
   }
 
-  const resizeTeams = (count: number) => {
-    setTeams((prev) => {
-      const next = [...prev]
-      if (next.length > count) {
-        return next.slice(0, count)
-      }
-      while (next.length < count) {
-        const idx = next.length
-        next.push({
-          name: `チーム${idx + 1}`,
-          color: TEAM_COLOR_PRESETS[idx % TEAM_COLOR_PRESETS.length].color,
-          playersRaw: '',
-        })
-      }
-      return next
-    })
-  }
-
   const updateTeam = (index: number, patch: Partial<TeamForm>) => {
     setTeams((prev) => prev.map((team, i) => (i === index ? { ...team, ...patch } : team)))
   }
 
   const addTeam = () => {
     setTeams((prev) => {
+      if (prev.length >= 8) {
+        return prev
+      }
       const idx = prev.length
       return [
         ...prev,
@@ -105,20 +82,7 @@ export const StartPage = () => {
   }
 
   const removeTeam = (index: number) => {
-    setTeams((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  const getContrastColor = (hex: string) => {
-    try {
-      const c = hex.replace('#', '')
-      const r = parseInt(c.substring(0, 2), 16)
-      const g = parseInt(c.substring(2, 4), 16)
-      const b = parseInt(c.substring(4, 6), 16)
-      const yiq = (r * 299 + g * 587 + b * 114) / 1000
-      return yiq >= 128 ? '#0f172a' : '#ffffff'
-    } catch (e) {
-      return '#0f172a'
-    }
+    setTeams((prev) => (prev.length <= 2 ? prev : prev.filter((_, i) => i !== index)))
   }
 
   const parsePlayers = (playersRaw: string) =>
@@ -193,24 +157,6 @@ export const StartPage = () => {
   return (
     <main className="mx-auto w-full max-w-6xl space-y-4 p-4">
       <h1 className="text-2xl font-bold text-slate-800">Attack1025 - 初期設定</h1>
-
-      <div className="mt-2">
-        <button
-          type="button"
-          className="rounded bg-rose-500 px-3 py-1 text-xs text-white"
-          onClick={() => {
-            try {
-              localStorage.removeItem('attack1025-game-state')
-            } catch (e) {
-              // ignore
-            }
-            resetGame()
-            window.location.reload()
-          }}
-        >
-          LocalStorage をクリアしてリセット
-        </button>
-      </div>
 
       <section className="grid gap-4 rounded border border-slate-300 bg-white p-4 md:grid-cols-2">
         <label className="text-sm">
