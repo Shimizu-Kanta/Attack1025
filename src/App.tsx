@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { GamePage } from './pages/GamePage'
 import { ResultPage } from './pages/ResultPage'
-import { StartPage } from './pages/StartPage'
+import StartPage from './pages/StartPage'
 
 function App() {
   return (

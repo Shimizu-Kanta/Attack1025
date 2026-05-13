@@ -9,9 +9,10 @@ type TeamForm = {
   name: string
   color: string
   playersRaw: string
+  bonusRaw?: string
 }
 
-const BOARD_SIZES = [5, 8, 16, 32]
+// board size can be any integer between 5 and 32
 
 const createTeamDefaults = (count: number): TeamForm[] =>
   Array.from({ length: count }).map((_, i) => ({
@@ -33,6 +34,7 @@ export const StartPage = () => {
   const [seed, setSeed] = useState(createDefaultSeed())
   const [revealMode, setRevealMode] = useState<RevealMode>('afterApproval')
   const [penaltyThreshold, setPenaltyThreshold] = useState(2)
+  const [initialOpenCount, setInitialOpenCount] = useState(1)
   const [teams, setTeams] = useState<TeamForm[]>(createTeamDefaults(2))
   const [error, setError] = useState<string>('')
 
@@ -131,9 +133,45 @@ export const StartPage = () => {
     updateTeam(teamIndex, { playersRaw: players.join(',') })
   }
 
+  const parseBonus = (bonusRaw: string) =>
+    bonusRaw
+      .split(',')
+      .map((s) => Number(s.trim()))
+      .filter((n) => Number.isInteger(n) && n >= 1 && n <= 1025)
+
   const addMember = (teamIndex: number) => {
     const players = parsePlayers(teams[teamIndex].playersRaw)
     updatePlayers(teamIndex, [...players, ''])
+  }
+
+  const updateBonus = (teamIndex: number, bonuses: number[]) => {
+    updateTeam(teamIndex, { bonusRaw: bonuses.join(',') })
+  }
+
+  const getBonusParts = (teamIndex: number) => {
+    const raw = teams[teamIndex].bonusRaw ?? ''
+    // preserve empty parts so UI can show placeholder inputs
+    if (raw === '') return ['']
+    return raw.split(',').map((s) => s.trim())
+  }
+
+  const addBonus = (teamIndex: number) => {
+    const parts = getBonusParts(teamIndex)
+    const next = parts.concat([''])
+    updateTeam(teamIndex, { bonusRaw: next.join(',') })
+  }
+
+  const updateBonusAt = (teamIndex: number, bonusIndex: number, value: string) => {
+    const parts = getBonusParts(teamIndex)
+    const next = [...parts]
+    next[bonusIndex] = value.trim()
+    updateTeam(teamIndex, { bonusRaw: next.join(',') })
+  }
+
+  const removeBonus = (teamIndex: number, bonusIndex: number) => {
+    const parts = getBonusParts(teamIndex)
+    parts.splice(bonusIndex, 1)
+    updateTeam(teamIndex, { bonusRaw: parts.join(',') })
   }
 
   const removeMember = (teamIndex: number, memberIndex: number) => {
@@ -157,6 +195,7 @@ export const StartPage = () => {
       excludedPokemonNumbers,
       revealMode,
       penaltyThreshold,
+      initialOpenCount,
     }
 
     // 重複カラーのチェック
@@ -172,6 +211,11 @@ export const StartPage = () => {
       return
     }
 
+    if (previewPoolCount < requiredCount) {
+      setError('利用可能な図鑑番号が足りません。除外設定と範囲を確認してください。')
+      return
+    }
+
     try {
       startGame(
         settings,
@@ -182,6 +226,7 @@ export const StartPage = () => {
             .split(',')
             .map((name) => name.trim())
             .filter(Boolean),
+          bonusNumbers: parseBonus(team.bonusRaw ?? ''),
         })),
       )
       navigate('/game')
@@ -215,17 +260,14 @@ export const StartPage = () => {
       <section className="grid gap-4 rounded border border-slate-300 bg-white p-4 md:grid-cols-2">
         <label className="text-sm">
           盤面サイズ
-          <select
+          <input
+            type="number"
+            min={5}
+            max={32}
             className="mt-1 w-full rounded border border-slate-300 p-2"
             value={boardSize}
-            onChange={(e) => setBoardSize(Number(e.target.value))}
-          >
-            {BOARD_SIZES.map((size) => (
-              <option key={size} value={size}>
-                {size}x{size}
-              </option>
-            ))}
-          </select>
+            onChange={(e) => setBoardSize(Math.max(5, Math.min(32, Number(e.target.value) || 5)))}
+          />
         </label>
 
         <label className="text-sm">
@@ -300,6 +342,18 @@ export const StartPage = () => {
             className="mt-1 w-full rounded border border-slate-300 p-2"
             value={penaltyThreshold}
             onChange={(e) => setPenaltyThreshold(Math.max(1, Number(e.target.value)))}
+          />
+        </label>
+
+        <label className="text-sm">
+          初期公開マス数
+          <input
+            type="number"
+            min={1}
+            max={requiredCount}
+            className="mt-1 w-full rounded border border-slate-300 p-2"
+            value={initialOpenCount}
+            onChange={(e) => setInitialOpenCount(Math.max(1, Math.min(requiredCount, Number(e.target.value) || 1)))}
           />
         </label>
 
@@ -380,6 +434,39 @@ export const StartPage = () => {
                   </div>
                 </div>
 
+                <div className="text-xs text-slate-700">
+                  <div className="mb-1">ボーナスマス</div>
+                  <div className="space-y-1">
+                    {getBonusParts(i).map((raw, bi) => (
+                      <div key={`bonus-${bi}`} className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          max={1025}
+                          className="w-full rounded border border-slate-300 p-2 text-sm"
+                          value={raw}
+                          onChange={(e) => updateBonusAt(i, bi, e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeBonus(i, bi)}
+                          className="rounded bg-rose-500 px-2 py-1 text-white text-sm"
+                          aria-label={`ボーナスマス${bi + 1}を削除`}
+                        >
+                          -
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => addBonus(i)}
+                      className="mt-1 rounded bg-green-600 px-2 py-1 text-white text-sm"
+                    >
+                      ボーナスマスを追加
+                    </button>
+                  </div>
+                </div>
+
                 <div className="flex justify-end">
                   <button
                     type="button"
@@ -417,3 +504,5 @@ export const StartPage = () => {
     </main>
   )
 }
+
+export default StartPage
