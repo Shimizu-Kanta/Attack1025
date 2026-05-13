@@ -330,8 +330,9 @@ export const StartPage = () => {
                   <button
                     type="button"
                     onClick={() => removeTeam(i)}
-                    className="rounded bg-rose-600 px-2 py-1 text-white"
+                    className="rounded bg-rose-600 px-2 py-1 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
                     aria-label={`チーム${i + 1}を削除`}
+                    disabled={teams.length <= 2}
                   >
                     -
                   </button>
@@ -344,7 +345,8 @@ export const StartPage = () => {
             <button
               type="button"
               onClick={addTeam}
-              className="rounded bg-green-600 px-3 py-1 text-sm text-white"
+              className="rounded bg-green-600 px-3 py-1 text-sm text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+              disabled={teams.length >= 8}
             >
               チームを追加
             </button>
