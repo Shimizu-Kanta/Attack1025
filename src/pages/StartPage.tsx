@@ -12,6 +12,8 @@ type TeamForm = {
 }
 
 const BOARD_SIZES = [5, 8, 16, 32]
+const MIN_TEAMS = 2
+const MAX_TEAMS = 8
 
 const createTeamDefaults = (count: number): TeamForm[] =>
   Array.from({ length: count }).map((_, i) => ({
@@ -32,7 +34,7 @@ export const StartPage = () => {
   const [seed, setSeed] = useState(createDefaultSeed())
   const [revealMode, setRevealMode] = useState<RevealMode>('afterApproval')
   const [penaltyThreshold, setPenaltyThreshold] = useState(2)
-  const [teams, setTeams] = useState<TeamForm[]>(createTeamDefaults(2))
+  const [teams, setTeams] = useState<TeamForm[]>(createTeamDefaults(MIN_TEAMS))
   const [error, setError] = useState<string>('')
 
   const requiredCount = boardSize * boardSize
@@ -66,7 +68,7 @@ export const StartPage = () => {
 
   const addTeam = () => {
     setTeams((prev) => {
-      if (prev.length >= 8) {
+      if (prev.length >= MAX_TEAMS) {
         return prev
       }
       const idx = prev.length
@@ -82,7 +84,7 @@ export const StartPage = () => {
   }
 
   const removeTeam = (index: number) => {
-    setTeams((prev) => (prev.length <= 2 ? prev : prev.filter((_, i) => i !== index)))
+    setTeams((prev) => (prev.length <= MIN_TEAMS ? prev : prev.filter((_, i) => i !== index)))
   }
 
   const parsePlayers = (playersRaw: string) =>
@@ -131,7 +133,7 @@ export const StartPage = () => {
       return
     }
 
-    if (teams.length <  2) {
+    if (teams.length < MIN_TEAMS) {
       setError('チームは2つ以上必要です。')
       return
     }
@@ -332,7 +334,7 @@ export const StartPage = () => {
                     onClick={() => removeTeam(i)}
                     className="rounded bg-rose-600 px-2 py-1 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
                     aria-label={`チーム${i + 1}を削除`}
-                    disabled={teams.length <= 2}
+                    disabled={teams.length <= MIN_TEAMS}
                   >
                     -
                   </button>
@@ -346,7 +348,7 @@ export const StartPage = () => {
               type="button"
               onClick={addTeam}
               className="rounded bg-green-600 px-3 py-1 text-sm text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-              disabled={teams.length >= 8}
+              disabled={teams.length >= MAX_TEAMS}
             >
               チームを追加
             </button>
