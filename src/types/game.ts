@@ -10,6 +10,7 @@ export type GameSettings = {
   excludedPokemonNumbers: number[]
   revealMode: RevealMode
   penaltyThreshold: number
+  initialOpenCount?: number
 }
 
 export type Team = {
@@ -17,7 +18,9 @@ export type Team = {
   name: string
   color: string
   players: string[]
+  bonusNumbers?: number[]
   penaltyPoints: number
+  attackExecutions?: number
 }
 
 export type Panel = {
@@ -29,6 +32,9 @@ export type Panel = {
   revealStatus: 'hidden' | 'revealed'
   requestStatus: 'none' | 'pending'
   pendingRequestIds: string[]
+  highlightType?: 'none' | 'request' | 'bonus'
+  highlightRequest?: boolean
+  highlightBonus?: boolean
 }
 
 export type CaptureRequestStatus =
@@ -74,4 +80,21 @@ export type TeamRanking = {
   teamId: string
   score: number
   maxOwnedPokemonNumber: number
+}
+
+export type AttackSubmission = {
+  id: string
+  teamId: string
+  playerName: string
+  comment?: string
+  submittedAt: string
+}
+
+export type AttackChance = {
+  active: boolean
+  topic?: string
+  initiatedAt?: string
+  submissions: AttackSubmission[]
+  winnerSubmissionId?: string
+  executed?: boolean
 }

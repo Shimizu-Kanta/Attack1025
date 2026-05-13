@@ -44,6 +44,7 @@ export const createBoard = (
   boardSize: number,
   seed: string,
   pokemonPool: number[],
+  initialOpenCount = 1,
 ): Panel[] => {
   const needed = boardSize * boardSize
   if (pokemonPool.length < needed) {
@@ -58,7 +59,16 @@ export const createBoard = (
   }
 
   const selected = numbers.slice(0, needed)
-  const center = Math.floor(boardSize / 2)
+
+  // choose initialOpenCount unique indices to reveal, seeded by the provided seed
+  const rnd = seededRandom(seed + '-open')
+  const indices = Array.from({ length: needed }, (_, i) => i)
+  for (let i = indices.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rnd() * (i + 1))
+    ;[indices[i], indices[j]] = [indices[j], indices[i]]
+  }
+  const openCount = Math.max(0, Math.min(needed, Math.floor(initialOpenCount)))
+  const openSet = new Set(indices.slice(0, openCount))
 
   return selected.map((pokemonNumber, index) => {
     const x = index % boardSize
@@ -71,7 +81,7 @@ export const createBoard = (
       y,
       pokemonNumber,
       ownerTeamId: null,
-      revealStatus: x === center && y === center ? 'revealed' : 'hidden',
+      revealStatus: openSet.has(index) ? 'revealed' : 'hidden',
       requestStatus: 'none',
       pendingRequestIds: [],
     }
@@ -122,24 +132,9 @@ export const revealAroundPanel = (
 }
 
 export const getAvailablePanels = (board: Panel[], boardSize: number): Panel[] => {
-  const hasOwned = board.some((panel) => panel.ownerTeamId)
-
-  if (!hasOwned) {
-    return board.filter(
-      (panel) => panel.revealStatus === 'revealed' && panel.ownerTeamId === null,
-    )
-  }
-
-  return board.filter((panel) => {
-    if (panel.revealStatus !== 'revealed' || panel.ownerTeamId !== null) {
-      return false
-    }
-
-    return DIRECTIONS.some(([dx, dy]) => {
-      const neighbor = getPanelByPosition(board, boardSize, panel.x + dx, panel.y + dy)
-      return Boolean(neighbor?.ownerTeamId)
-    })
-  })
+  // All revealed and unowned panels are available for request/acquisition.
+  // Previously availability required adjacency to owned panels after initial captures.
+  return board.filter((panel) => panel.revealStatus === 'revealed' && panel.ownerTeamId === null)
 }
 
 export const applyFlips = (
