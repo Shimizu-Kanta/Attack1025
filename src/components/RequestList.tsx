@@ -1,14 +1,17 @@
 import type { CaptureRequest, Team } from '../types/game'
+import { useState } from 'react'
 
 type RequestListProps = {
   requests: CaptureRequest[]
   teams: Team[]
-  onApprove?: (requestId: string) => void
+  onApprove?: (requestId: string, bonusRadius?: number) => void
   onReject?: (requestId: string, withPenalty: boolean) => void
 }
 
 export const RequestList = ({ requests, teams, onApprove, onReject }: RequestListProps) => {
   const teamMap = new Map(teams.map((team) => [team.id, team]))
+  const [showBonusFor, setShowBonusFor] = useState<string | null>(null)
+  const [bonusRadius, setBonusRadius] = useState<number>(1)
 
   if (requests.length === 0) {
     return <p className="text-xs text-slate-500">申請はありません。</p>
@@ -48,6 +51,13 @@ export const RequestList = ({ requests, teams, onApprove, onReject }: RequestLis
                 </button>
                 <button
                   type="button"
+                  onClick={() => setShowBonusFor(request.id)}
+                  className="rounded bg-yellow-500 px-2 py-1 text-white"
+                >
+                  ボーナス承認
+                </button>
+                <button
+                  type="button"
                   onClick={() => onReject(request.id, false)}
                   className="rounded bg-slate-600 px-2 py-1 text-white"
                 >
@@ -64,6 +74,45 @@ export const RequestList = ({ requests, teams, onApprove, onReject }: RequestLis
             ) : (
               <p className="mt-1 text-[11px] text-slate-500">状態: {request.status}</p>
             )}
+
+            {showBonusFor === request.id ? (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                <div className="w-80 rounded bg-white p-4">
+                  <h3 className="mb-2 font-bold">ボーナス承認</h3>
+                  <p className="text-sm">周囲何マスをまとめて取得しますか？</p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={5}
+                      value={bonusRadius}
+                      onChange={(e) => setBonusRadius(Math.max(1, Math.min(5, Number(e.target.value) || 1)))}
+                      className="w-20 rounded border border-slate-300 p-2"
+                    />
+                    <div className="flex-1" />
+                  </div>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowBonusFor(null)}
+                      className="rounded bg-slate-200 px-3 py-1"
+                    >
+                      キャンセル
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onApprove?.(request.id, bonusRadius)
+                        setShowBonusFor(null)
+                      }}
+                      className="rounded bg-emerald-600 px-3 py-1 text-white"
+                    >
+                      実行
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </li>
         )
       })}

@@ -9,16 +9,23 @@ type TeamForm = {
   name: string
   color: string
   playersRaw: string
+  bonusRaw?: string
 }
 
-const BOARD_SIZES = [5, 8, 16, 32]
+// board size can be any integer between 5 and 32
+
+const getDefaultTeamName = (colorName: string) => `${colorName}チーム` 
 
 const createTeamDefaults = (count: number): TeamForm[] =>
-  Array.from({ length: count }).map((_, i) => ({
-    name: `チーム${i + 1}`,
-    color: TEAM_COLOR_PRESETS[i % TEAM_COLOR_PRESETS.length].color,
-    playersRaw: '',
-  }))
+  Array.from({ length: count }).map((_, i) => {
+    const preset = TEAM_COLOR_PRESETS[i % TEAM_COLOR_PRESETS.length]
+
+    return {
+      name: getDefaultTeamName(preset.name),
+      color: preset.color,
+      playersRaw: '',
+    }
+  })
 
 export const StartPage = () => {
   const navigate = useNavigate()
@@ -33,6 +40,7 @@ export const StartPage = () => {
   const [seed, setSeed] = useState(createDefaultSeed())
   const [revealMode, setRevealMode] = useState<RevealMode>('afterApproval')
   const [penaltyThreshold, setPenaltyThreshold] = useState(2)
+  const [initialOpenCount, setInitialOpenCount] = useState(1)
   const [teams, setTeams] = useState<TeamForm[]>(createTeamDefaults(2))
   const [error, setError] = useState<string>('')
 
@@ -68,24 +76,6 @@ export const StartPage = () => {
     return <Navigate to="/result" replace />
   }
 
-  const resizeTeams = (count: number) => {
-    setTeams((prev) => {
-      const next = [...prev]
-      if (next.length > count) {
-        return next.slice(0, count)
-      }
-      while (next.length < count) {
-        const idx = next.length
-        next.push({
-          name: `チーム${idx + 1}`,
-          color: TEAM_COLOR_PRESETS[idx % TEAM_COLOR_PRESETS.length].color,
-          playersRaw: '',
-        })
-      }
-      return next
-    })
-  }
-
   const updateTeam = (index: number, patch: Partial<TeamForm>) => {
     setTeams((prev) => prev.map((team, i) => (i === index ? { ...team, ...patch } : team)))
   }
@@ -93,11 +83,13 @@ export const StartPage = () => {
   const addTeam = () => {
     setTeams((prev) => {
       const idx = prev.length
+      const preset = TEAM_COLOR_PRESETS[idx % TEAM_COLOR_PRESETS.length]
+
       return [
         ...prev,
         {
-          name: `チーム${idx + 1}`,
-          color: TEAM_COLOR_PRESETS[idx % TEAM_COLOR_PRESETS.length].color,
+          name: getDefaultTeamName(preset.name),
+          color: preset.color,
           playersRaw: '',
         },
       ]
@@ -106,19 +98,6 @@ export const StartPage = () => {
 
   const removeTeam = (index: number) => {
     setTeams((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  const getContrastColor = (hex: string) => {
-    try {
-      const c = hex.replace('#', '')
-      const r = parseInt(c.substring(0, 2), 16)
-      const g = parseInt(c.substring(2, 4), 16)
-      const b = parseInt(c.substring(4, 6), 16)
-      const yiq = (r * 299 + g * 587 + b * 114) / 1000
-      return yiq >= 128 ? '#0f172a' : '#ffffff'
-    } catch (e) {
-      return '#0f172a'
-    }
   }
 
   const parsePlayers = (playersRaw: string) =>
@@ -131,9 +110,41 @@ export const StartPage = () => {
     updateTeam(teamIndex, { playersRaw: players.join(',') })
   }
 
+  const parseBonus = (bonusRaw: string) =>
+    bonusRaw
+      .split(',')
+      .map((s) => Number(s.trim()))
+      .filter((n) => Number.isInteger(n) && n >= 1 && n <= 1025)
+
   const addMember = (teamIndex: number) => {
     const players = parsePlayers(teams[teamIndex].playersRaw)
     updatePlayers(teamIndex, [...players, ''])
+  }
+
+  const getBonusParts = (teamIndex: number) => {
+    const raw = teams[teamIndex].bonusRaw ?? ''
+    // preserve empty parts so UI can show placeholder inputs
+    if (raw === '') return ['']
+    return raw.split(',').map((s) => s.trim())
+  }
+
+  const addBonus = (teamIndex: number) => {
+    const parts = getBonusParts(teamIndex)
+    const next = parts.concat([''])
+    updateTeam(teamIndex, { bonusRaw: next.join(',') })
+  }
+
+  const updateBonusAt = (teamIndex: number, bonusIndex: number, value: string) => {
+    const parts = getBonusParts(teamIndex)
+    const next = [...parts]
+    next[bonusIndex] = value.trim()
+    updateTeam(teamIndex, { bonusRaw: next.join(',') })
+  }
+
+  const removeBonus = (teamIndex: number, bonusIndex: number) => {
+    const parts = getBonusParts(teamIndex)
+    parts.splice(bonusIndex, 1)
+    updateTeam(teamIndex, { bonusRaw: parts.join(',') })
   }
 
   const removeMember = (teamIndex: number, memberIndex: number) => {
@@ -157,6 +168,7 @@ export const StartPage = () => {
       excludedPokemonNumbers,
       revealMode,
       penaltyThreshold,
+      initialOpenCount,
     }
 
     // 重複カラーのチェック
@@ -172,6 +184,11 @@ export const StartPage = () => {
       return
     }
 
+    if (previewPoolCount < requiredCount) {
+      setError('利用可能な図鑑番号が足りません。除外設定と範囲を確認してください。')
+      return
+    }
+
     try {
       startGame(
         settings,
@@ -182,6 +199,7 @@ export const StartPage = () => {
             .split(',')
             .map((name) => name.trim())
             .filter(Boolean),
+          bonusNumbers: parseBonus(team.bonusRaw ?? ''),
         })),
       )
       navigate('/game')
@@ -201,7 +219,7 @@ export const StartPage = () => {
           onClick={() => {
             try {
               localStorage.removeItem('attack1025-game-state')
-            } catch (e) {
+            } catch {
               // ignore
             }
             resetGame()
@@ -215,17 +233,14 @@ export const StartPage = () => {
       <section className="grid gap-4 rounded border border-slate-300 bg-white p-4 md:grid-cols-2">
         <label className="text-sm">
           盤面サイズ
-          <select
+          <input
+            type="number"
+            min={5}
+            max={32}
             className="mt-1 w-full rounded border border-slate-300 p-2"
             value={boardSize}
-            onChange={(e) => setBoardSize(Number(e.target.value))}
-          >
-            {BOARD_SIZES.map((size) => (
-              <option key={size} value={size}>
-                {size}x{size}
-              </option>
-            ))}
-          </select>
+            onChange={(e) => setBoardSize(Math.max(5, Math.min(32, Number(e.target.value) || 5)))}
+          />
         </label>
 
         <label className="text-sm">
@@ -303,6 +318,18 @@ export const StartPage = () => {
           />
         </label>
 
+        <label className="text-sm">
+          初期公開マス数
+          <input
+            type="number"
+            min={1}
+            max={requiredCount}
+            className="mt-1 w-full rounded border border-slate-300 p-2"
+            value={initialOpenCount}
+            onChange={(e) => setInitialOpenCount(Math.max(1, Math.min(requiredCount, Number(e.target.value) || 1)))}
+          />
+        </label>
+
         <p className="md:col-span-2 text-xs text-slate-500">
           利用可能番号: {previewPoolCount} / 必要マス数: {requiredCount}
         </p>
@@ -336,7 +363,17 @@ export const StartPage = () => {
                   <select
                     className="mt-1 w-full rounded border border-slate-300 p-2"
                     value={team.color}
-                    onChange={(e) => updateTeam(i, { color: e.target.value })}
+                    onChange={(e) => {
+                      const selectedColor = e.target.value
+                      const selextedPreset = TEAM_COLOR_PRESETS.find(
+                        (preset) => preset.color === selectedColor,
+                      )
+
+                      updateTeam(i, {
+                        color: selectedColor,
+                        name: selextedPreset ? getDefaultTeamName(selextedPreset.name) : team.name,
+                      }) 
+                    }}
                   >
                     {TEAM_COLOR_PRESETS.map((preset) => (
                       <option key={preset.color} value={preset.color}>
@@ -380,6 +417,39 @@ export const StartPage = () => {
                   </div>
                 </div>
 
+                <div className="text-xs text-slate-700">
+                  <div className="mb-1">ボーナスマス</div>
+                  <div className="space-y-1">
+                    {getBonusParts(i).map((raw, bi) => (
+                      <div key={`bonus-${bi}`} className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          max={1025}
+                          className="w-full rounded border border-slate-300 p-2 text-sm"
+                          value={raw}
+                          onChange={(e) => updateBonusAt(i, bi, e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeBonus(i, bi)}
+                          className="rounded bg-rose-500 px-2 py-1 text-white text-sm"
+                          aria-label={`ボーナスマス${bi + 1}を削除`}
+                        >
+                          -
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => addBonus(i)}
+                      className="mt-1 rounded bg-green-600 px-2 py-1 text-white text-sm"
+                    >
+                      ボーナスマスを追加
+                    </button>
+                  </div>
+                </div>
+
                 <div className="flex justify-end">
                   <button
                     type="button"
@@ -417,3 +487,5 @@ export const StartPage = () => {
     </main>
   )
 }
+
+export default StartPage

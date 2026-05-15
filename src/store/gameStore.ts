@@ -18,6 +18,8 @@ import type {
   Panel,
   Team,
   TeamRanking,
+  AttackChance,
+  AttackSubmission,
 } from '../types/game'
 import { createDefaultSeed } from '../utils/seed'
 
@@ -33,6 +35,7 @@ type SetupTeamInput = {
   name: string
   color: string
   players: string[]
+  bonusNumbers?: number[]
 }
 
 type GameStore = {
@@ -52,12 +55,19 @@ type GameStore = {
 
   startGame: (settings: GameSettings, teams: SetupTeamInput[]) => void
   submitRequest: (input: SubmitRequestInput) => { ok: boolean; message?: string }
-  approveRequest: (requestId: string) => void
+  approveRequest: (requestId: string, bonusRadius?: number) => void
   rejectRequest: (requestId: string, withPenalty: boolean) => void
   manualAcquirePanel: (panelId: string, teamId: string) => void
   endGame: () => void
   resetGame: () => void
   setSelectedPanel: (panelId: string | null) => void
+  // Attack Chance
+  attackChance: AttackChance
+  startAttackChance: (topic: string) => void
+  submitAttackChance: (input: { teamId: string; playerName: string; comment?: string }) => { ok: boolean; message?: string }
+  chooseAttackWinner: (submissionId: string) => void
+  executeAttackRemoval: (executorTeamId: string, targetTeamId: string) => { ok: boolean; message?: string; lostPanelId?: string | null }
+  executeAttackByPanel: (executorTeamId: string, panelId: string) => { ok: boolean; message?: string; lostPanelId?: string | null }
 }
 
 const STORAGE_KEY = 'attack1025-game-state'
@@ -78,6 +88,26 @@ const createLog = (type: GameLog['type'], message: string): GameLog => ({
   message,
   createdAt: new Date().toISOString(),
 })
+
+const computeHighlights = (board: Panel[], teams: Team[]): Panel[] => {
+  return board.map((panel) => {
+    // owned panels should have no highlights
+    if (panel.ownerTeamId) {
+      return { ...panel, highlightType: 'none', highlightRequest: false, highlightBonus: false }
+    }
+
+    const hasRequest = (panel.pendingRequestIds || []).length > 0
+    const teamsWithBonus = teams.filter((t) => (t.bonusNumbers || []).includes(panel.pokemonNumber))
+    const hasBonus = panel.revealStatus === 'revealed' && teamsWithBonus.length > 0
+
+    return {
+      ...panel,
+      highlightType: hasRequest ? 'request' : hasBonus ? 'bonus' : 'none',
+      highlightRequest: hasRequest,
+      highlightBonus: hasBonus,
+    }
+  })
+}
 
 const canRestoreActivePhase = (
   phase: GamePhase,
@@ -120,12 +150,13 @@ export const useGameStore = create<GameStore>()(
       teams: [],
       board: [],
       requests: [],
+      attackChance: { active: false, submissions: [] },
       logs: [],
       selectedPanelId: null,
       startedAt: null,
       endedAt: null,
 
-      availablePanels: () => getAvailablePanels(get().board, get().settings.boardSize),
+      availablePanels: () => getAvailablePanels(get().board),
 
       scores: () => {
         const board = get().board
@@ -147,21 +178,32 @@ export const useGameStore = create<GameStore>()(
           settings.pokemonNumberEnd,
           settings.excludedPokemonNumbers,
         )
-        const board = createBoard(settings.boardSize, settings.seed, pool)
+        let board = createBoard(
+          settings.boardSize,
+          settings.seed,
+          pool,
+          settings.initialOpenCount ?? 1,
+        )
+
+        // compute initial highlights (bonus for revealed bonus numbers)
+        board = computeHighlights(board, [])
 
         const teams: Team[] = teamInputs.map((team, index) => ({
           id: `team-${index + 1}`,
           name: team.name,
           color: team.color,
           players: team.players,
+          bonusNumbers: team.bonusNumbers ?? [],
           penaltyPoints: 0,
+          attackExecutions: 0,
         }))
 
         set({
           phase: 'playing',
           settings,
           teams,
-          board,
+          board: computeHighlights(board, teams),
+          attackChance: { active: false, submissions: [] },
           requests: [],
           logs: [
             createLog(
@@ -232,7 +274,7 @@ export const useGameStore = create<GameStore>()(
         }
 
         set({
-          board: nextBoard,
+          board: computeHighlights(nextBoard, state.teams),
           requests: [...state.requests, request],
           logs: nextLogs,
         })
@@ -240,7 +282,7 @@ export const useGameStore = create<GameStore>()(
         return { ok: true }
       },
 
-      approveRequest: (requestId) => {
+      approveRequest: (requestId, bonusRadius = 0) => {
         const state = get()
         const request = state.requests.find((item) => item.id === requestId)
         if (!request || request.status !== 'pending') {
@@ -257,64 +299,86 @@ export const useGameStore = create<GameStore>()(
           return
         }
 
-        let nextBoard: Panel[] = state.board.map((item): Panel =>
-          item.id === panel.id
-            ? {
-                ...item,
-                ownerTeamId: team.id,
-                revealStatus: 'revealed',
-                requestStatus: 'none',
-                pendingRequestIds: [],
-              }
+        // start with mapping board to copy
+        let nextBoard: Panel[] = state.board.map((item) => ({ ...item }))
+
+        // determine which panels will be acquired: the target panel plus surrounding within bonusRadius
+        const acquiredIds = new Set<string>()
+        const origin = panel
+        let radius = Math.max(0, Math.min(5, Math.floor(bonusRadius)))
+        // if no explicit bonusRadius provided, determine automatic bonus based on configured bonus numbers
+        if (radius === 0) {
+          const teamsWithBonus = state.teams.filter((t) => (t.bonusNumbers || []).includes(panel.pokemonNumber))
+          if (teamsWithBonus.length > 0) {
+            radius = teamsWithBonus.some((t) => t.id === team.id) ? 2 : 1
+          }
+        }
+        for (const p of nextBoard) {
+          const dx = Math.abs(p.x - origin.x)
+          const dy = Math.abs(p.y - origin.y)
+          if (dx <= radius && dy <= radius) {
+            // do not acquire panels that are already owned
+            if (!p.ownerTeamId) {
+              acquiredIds.add(p.id)
+            }
+          }
+        }
+
+        // assign ownership for acquired panels
+        nextBoard = nextBoard.map((item) =>
+          acquiredIds.has(item.id)
+            ? { ...item, ownerTeamId: team.id, revealStatus: 'revealed', requestStatus: 'none', pendingRequestIds: [] }
             : item,
         )
 
-        const revealResult = revealAroundPanel(nextBoard, state.settings.boardSize, panel.id)
-        nextBoard = revealResult.board
+        // reveal the outer ring (radius + 1) around origin
+        const revealRadius = radius + 1
+        const revealIds = new Set<string>()
+        for (const p of nextBoard) {
+          const dx = Math.abs(p.x - origin.x)
+          const dy = Math.abs(p.y - origin.y)
+          const maxd = Math.max(dx, dy)
+          if (maxd === revealRadius) {
+            revealIds.add(p.id)
+          }
+        }
+        nextBoard = nextBoard.map((item) =>
+          revealIds.has(item.id) ? { ...item, revealStatus: 'revealed' } : item,
+        )
 
-        const flipResult = applyFlips(nextBoard, state.settings.boardSize, panel.id, team.id)
-        nextBoard = flipResult.board
+        // apply flips for each acquired panel (chain captures)
+        for (const id of Array.from(acquiredIds)) {
+          const flipResult = applyFlips(nextBoard, state.settings.boardSize, id, team.id)
+          nextBoard = flipResult.board
+        }
 
+        // update requests: approved for this request, cancelled for other pending requests on any acquired panel
         const nextRequests = state.requests.map((item) => {
           if (item.id === request.id) {
-            return {
-              ...item,
-              status: 'approved' as const,
-              reviewedAt: new Date().toISOString(),
-            }
+            return { ...item, status: 'approved' as const, reviewedAt: new Date().toISOString() }
           }
-
-          if (item.panelId === request.panelId && item.status === 'pending') {
-            return {
-              ...item,
-              status: 'cancelled' as const,
-              reviewedAt: new Date().toISOString(),
-            }
+          if (acquiredIds.has(item.panelId) && item.status === 'pending') {
+            return { ...item, status: 'cancelled' as const, reviewedAt: new Date().toISOString() }
           }
-
           return item
         })
 
-        const logs = [
+        const logs: GameLog[] = [
           createLog('request_approved', `${team.name} の申請を承認 (No.${panel.pokemonNumber})`),
-          createLog('panel_acquired', `${team.name} が No.${panel.pokemonNumber} を取得`),
           ...state.logs,
         ]
 
-        if (revealResult.revealedCount > 0) {
-          logs.unshift(
-            createLog('panel_revealed', `取得により ${revealResult.revealedCount} マス公開`),
-          )
+        // add acquired logs
+        logs.unshift(createLog('panel_acquired', `${team.name} が No.${panel.pokemonNumber} を取得`))
+        if (acquiredIds.size > 1) {
+          logs.unshift(createLog('panel_acquired', `${team.name} が周囲 ${radius} マスをまとめて取得 (${acquiredIds.size} マス)`))
         }
-
-        if (flipResult.flippedPanelIds.length > 0) {
-          logs.unshift(
-            createLog('panel_flipped', `${flipResult.flippedPanelIds.length} マス反転`),
-          )
+        if (revealIds.size > 0) {
+          logs.unshift(createLog('panel_revealed', `周囲 ${revealRadius} マス目を ${revealIds.size} マス公開`))
         }
 
         set({
-          board: nextBoard,
+          board: computeHighlights(nextBoard, state.teams),
           requests: nextRequests,
           logs,
         })
@@ -368,7 +432,7 @@ export const useGameStore = create<GameStore>()(
         }
 
         set({
-          board: nextBoard,
+          board: computeHighlights(nextBoard, nextTeams),
           teams: nextTeams,
           requests: state.requests.map((item) =>
             item.id === request.id
@@ -392,34 +456,64 @@ export const useGameStore = create<GameStore>()(
           return
         }
 
-        let nextBoard: Panel[] = state.board.map((item): Panel =>
-          item.id === panel.id
-            ? {
-                ...item,
-                ownerTeamId: team.id,
-                revealStatus: 'revealed',
-              }
+        // determine bonus radius based on configured bonus numbers
+        const teamsWithBonus = state.teams.filter((t) => (t.bonusNumbers || []).includes(panel.pokemonNumber))
+        const acquiringTeamHad = teamsWithBonus.some((t) => t.id === team.id)
+        const radius = acquiringTeamHad ? 2 : teamsWithBonus.length > 0 ? 1 : 0
+
+        let nextBoard: Panel[] = state.board.map((item) => ({ ...item }))
+
+        const acquiredIds = new Set<string>()
+        for (const p of nextBoard) {
+          const dx = Math.abs(p.x - panel.x)
+          const dy = Math.abs(p.y - panel.y)
+          if (Math.max(dx, dy) <= radius) {
+            if (!p.ownerTeamId) {
+              acquiredIds.add(p.id)
+            }
+          }
+        }
+
+        // assign ownership for acquired panels
+        nextBoard = nextBoard.map((item) =>
+          acquiredIds.has(item.id)
+            ? { ...item, ownerTeamId: team.id, revealStatus: 'revealed', requestStatus: 'none', pendingRequestIds: [] }
             : item,
         )
 
-        const revealResult = revealAroundPanel(nextBoard, state.settings.boardSize, panel.id)
-        nextBoard = revealResult.board
-
-        const flipResult = applyFlips(nextBoard, state.settings.boardSize, panel.id, team.id)
-        nextBoard = flipResult.board
-
-        const logs = [
-          createLog('panel_acquired', `GM操作: ${team.name} が No.${panel.pokemonNumber} を取得`),
-          ...state.logs,
-        ]
-
-        if (flipResult.flippedPanelIds.length > 0) {
-          logs.unshift(
-            createLog('panel_flipped', `GM操作で ${flipResult.flippedPanelIds.length} マス反転`),
-          )
+        // apply flips for acquired panels
+        for (const id of Array.from(acquiredIds)) {
+          const flipResult = applyFlips(nextBoard, state.settings.boardSize, id, team.id)
+          nextBoard = flipResult.board
         }
 
-        set({ board: nextBoard, logs })
+        // reveal outer ring (radius + 1)
+        const revealRadius = radius > 0 ? radius + 1 : 0
+        if (revealRadius > 0) {
+          const revealIds = new Set<string>()
+          for (const p of nextBoard) {
+            const dx = Math.abs(p.x - panel.x)
+            const dy = Math.abs(p.y - panel.y)
+            if (Math.max(dx, dy) === revealRadius) {
+              revealIds.add(p.id)
+            }
+          }
+          nextBoard = nextBoard.map((item) => (revealIds.has(item.id) ? { ...item, revealStatus: 'revealed' } : item))
+        }
+
+        // cancel pending requests on acquired panels
+        const nextRequests = state.requests.map((item) =>
+          acquiredIds.has(item.panelId) && item.status === 'pending'
+            ? { ...item, status: 'cancelled' as const, reviewedAt: new Date().toISOString() }
+            : item,
+        )
+
+        const logs = [createLog('panel_acquired', `GM操作: ${team.name} が No.${panel.pokemonNumber} を取得`), ...state.logs]
+        if (acquiredIds.size > 1) {
+          logs.unshift(createLog('panel_acquired', `GM操作: ${team.name} が周囲 ${radius} マスをまとめて取得 (${acquiredIds.size} マス)`))
+        }
+
+        set({ board: computeHighlights(nextBoard, state.teams), requests: nextRequests, logs })
       },
 
       endGame: () => {
@@ -445,6 +539,10 @@ export const useGameStore = create<GameStore>()(
             state.board.length === 0 &&
             state.requests.length === 0 &&
             state.logs.length === 0 &&
+            !state.attackChance.active &&
+            state.attackChance.submissions.length === 0 &&
+            !state.attackChance.winnerSubmissionId &&
+            !state.attackChance.executed &&
             state.selectedPanelId === null &&
             state.startedAt === null &&
             state.endedAt === null
@@ -461,6 +559,7 @@ export const useGameStore = create<GameStore>()(
             board: [],
             requests: [],
             logs: [],
+            attackChance: { active: false, submissions: [] },
             selectedPanelId: null,
             startedAt: null,
             endedAt: null,
@@ -476,6 +575,126 @@ export const useGameStore = create<GameStore>()(
           return { ...state, selectedPanelId: panelId }
         })
       },
+
+      // Attack Chance methods
+      startAttackChance: (topic: string) => {
+        const now = new Date().toISOString()
+        set((state) => ({
+          attackChance: { active: true, topic: topic.trim(), initiatedAt: now, submissions: [] },
+          logs: [createLog('game_start', `アタックチャンス開始: ${topic}`), ...state.logs],
+        }))
+      },
+
+      submitAttackChance: ({ teamId, playerName, comment }) => {
+        const state = get()
+        if (!state.attackChance?.active) {
+          return { ok: false, message: '現在アタックチャンスは開催されていません。' }
+        }
+
+        const teamExists = state.teams.some((t) => t.id === teamId)
+        if (!teamExists) {
+          return { ok: false, message: 'チームが見つかりません。' }
+        }
+
+        const id = crypto.randomUUID()
+        const submission: AttackSubmission = {
+          id,
+          teamId,
+          playerName: playerName.trim() || '匿名',
+          comment: comment?.trim() || undefined,
+          submittedAt: new Date().toISOString(),
+        }
+
+        set((state) => ({
+          attackChance: { ...(state.attackChance || { active: false, submissions: [] }), submissions: [...(state.attackChance?.submissions || []), submission] },
+          logs: [createLog('request_created', `アタック申請: ${submission.playerName} (${submission.teamId})`), ...state.logs],
+        }))
+
+        return { ok: true }
+      },
+
+      chooseAttackWinner: (submissionId: string) => {
+        const state = get()
+        if (!state.attackChance?.active) return
+        const sub = state.attackChance.submissions.find((s) => s.id === submissionId)
+        if (!sub) return
+
+        // mark winner and close attack chance; winner gets the right to execute later
+        set((state) => ({
+          attackChance: { ...(state.attackChance || { active: false, submissions: [] }), winnerSubmissionId: submissionId, active: false, executed: false },
+          logs: [createLog('request_approved', `アタックチャンス勝者選定: ${sub.playerName} (${sub.teamId})`), ...state.logs],
+        }))
+      },
+
+      // executorTeamId: the team which is executing the right (must match winner team)
+      executeAttackRemoval: (executorTeamId: string, targetTeamId: string) => {
+        const state = get()
+        if (!state.attackChance || !state.attackChance.winnerSubmissionId) {
+          return { ok: false, message: '勝者が選定されていません' }
+        }
+        if (state.attackChance.executed) {
+          return { ok: false, message: '既に実行済みです' }
+        }
+
+        const winnerSub = state.attackChance.submissions.find((s) => s.id === state.attackChance!.winnerSubmissionId)
+        if (!winnerSub) {
+          return { ok: false, message: '勝者情報が見つかりません' }
+        }
+
+        if (winnerSub.teamId !== executorTeamId) {
+          return { ok: false, message: '権利を持つチームのみ実行できます' }
+        }
+
+        const teamExists = state.teams.some((t) => t.id === targetTeamId)
+        if (!teamExists) return { ok: false, message: '対象チームが存在しません' }
+
+        const result = applyPenaltyLoss(state.board, targetTeamId)
+
+        // increment executor's attackExecutions count
+        const nextTeams = state.teams.map((t) =>
+          t.id === executorTeamId ? { ...t, attackExecutions: (t.attackExecutions || 0) + 1 } : t,
+        )
+
+        const logs = [createLog('panel_lost', `アタック実行: チーム ${targetTeamId} のパネルを1枚喪失`), ...state.logs]
+
+        set({ board: computeHighlights(result.board, nextTeams), logs, attackChance: { ...(state.attackChance || { active: false, submissions: [] }), executed: true } })
+
+        return { ok: true, lostPanelId: result.lostPanelId }
+      },
+
+        // Execute attack by selecting a specific panel id to remove ownership from
+        executeAttackByPanel: (executorTeamId: string, panelId: string) => {
+          const state = get()
+          if (!state.attackChance || !state.attackChance.winnerSubmissionId) {
+            return { ok: false, message: '勝者が選定されていません' }
+          }
+          if (state.attackChance.executed) {
+            return { ok: false, message: '既に実行済みです' }
+          }
+
+          const winnerSub = state.attackChance.submissions.find((s) => s.id === state.attackChance!.winnerSubmissionId)
+          if (!winnerSub) return { ok: false, message: '勝者情報が見つかりません' }
+          if (winnerSub.teamId !== executorTeamId) {
+            return { ok: false, message: '権利を持つチームのみ実行できます' }
+          }
+
+          const panel = state.board.find((p) => p.id === panelId)
+          if (!panel) return { ok: false, message: '対象パネルが見つかりません' }
+          if (!panel.ownerTeamId) return { ok: false, message: '対象パネルは所有されていません' }
+          if (panel.ownerTeamId === executorTeamId) return { ok: false, message: '自チームのパネルは対象にできません' }
+
+          const nextBoard = state.board.map((p) => (p.id === panelId ? { ...p, ownerTeamId: null } : { ...p }))
+
+          const nextTeams = state.teams.map((t) =>
+            t.id === executorTeamId ? { ...t, attackExecutions: (t.attackExecutions || 0) + 1 } : t,
+          )
+
+          const logs = [createLog('panel_lost', `アタック実行(選択): チーム ${panel.ownerTeamId} のパネル ${panel.id} を喪失`), ...state.logs]
+
+          set({ board: computeHighlights(nextBoard, nextTeams), logs, attackChance: { ...(state.attackChance || { active: false, submissions: [] }), executed: true } })
+
+          return { ok: true, lostPanelId: panelId }
+        },
     }),
     {
       name: STORAGE_KEY,
@@ -522,6 +741,7 @@ export const useGameStore = create<GameStore>()(
           teams: nextTeams,
           requests: Array.isArray(merged.requests) ? merged.requests : [],
           logs: Array.isArray(merged.logs) ? merged.logs : [],
+          attackChance: merged.attackChance ?? { active: false, submissions: [] },
           selectedPanelId,
           startedAt,
           endedAt,
@@ -534,6 +754,7 @@ export const useGameStore = create<GameStore>()(
         board: state.board,
         requests: state.requests,
         logs: state.logs,
+        attackChance: state.attackChance,
         selectedPanelId: state.selectedPanelId,
         startedAt: state.startedAt,
         endedAt: state.endedAt,
