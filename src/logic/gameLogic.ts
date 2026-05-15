@@ -131,7 +131,7 @@ export const revealAroundPanel = (
   return { board: nextBoard, revealedCount }
 }
 
-export const getAvailablePanels = (board: Panel[], boardSize: number): Panel[] => {
+export const getAvailablePanels = (board: Panel[]): Panel[] => {
   // All revealed and unowned panels are available for request/acquisition.
   // Previously availability required adjacency to owned panels after initial captures.
   return board.filter((panel) => panel.revealStatus === 'revealed' && panel.ownerTeamId === null)

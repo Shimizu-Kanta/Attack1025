@@ -66,7 +66,8 @@ type GameStore = {
   startAttackChance: (topic: string) => void
   submitAttackChance: (input: { teamId: string; playerName: string; comment?: string }) => { ok: boolean; message?: string }
   chooseAttackWinner: (submissionId: string) => void
-  executeAttackRemoval: (targetTeamId: string) => { ok: boolean; lostPanelId?: string | null }
+  executeAttackRemoval: (executorTeamId: string, targetTeamId: string) => { ok: boolean; message?: string; lostPanelId?: string | null }
+  executeAttackByPanel: (executorTeamId: string, panelId: string) => { ok: boolean; message?: string; lostPanelId?: string | null }
 }
 
 const STORAGE_KEY = 'attack1025-game-state'
@@ -155,7 +156,7 @@ export const useGameStore = create<GameStore>()(
       startedAt: null,
       endedAt: null,
 
-      availablePanels: () => getAvailablePanels(get().board, get().settings.boardSize),
+      availablePanels: () => getAvailablePanels(get().board),
 
       scores: () => {
         const board = get().board
@@ -202,6 +203,7 @@ export const useGameStore = create<GameStore>()(
           settings,
           teams,
           board: computeHighlights(board, teams),
+          attackChance: { active: false, submissions: [] },
           requests: [],
           logs: [
             createLog(
@@ -537,6 +539,10 @@ export const useGameStore = create<GameStore>()(
             state.board.length === 0 &&
             state.requests.length === 0 &&
             state.logs.length === 0 &&
+            !state.attackChance.active &&
+            state.attackChance.submissions.length === 0 &&
+            !state.attackChance.winnerSubmissionId &&
+            !state.attackChance.executed &&
             state.selectedPanelId === null &&
             state.startedAt === null &&
             state.endedAt === null
@@ -553,6 +559,7 @@ export const useGameStore = create<GameStore>()(
             board: [],
             requests: [],
             logs: [],
+            attackChance: { active: false, submissions: [] },
             selectedPanelId: null,
             startedAt: null,
             endedAt: null,
@@ -734,7 +741,7 @@ export const useGameStore = create<GameStore>()(
           teams: nextTeams,
           requests: Array.isArray(merged.requests) ? merged.requests : [],
           logs: Array.isArray(merged.logs) ? merged.logs : [],
-          attackChance: (merged as any).attackChance ?? { active: false, submissions: [] },
+          attackChance: merged.attackChance ?? { active: false, submissions: [] },
           selectedPanelId,
           startedAt,
           endedAt,

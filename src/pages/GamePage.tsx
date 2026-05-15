@@ -26,7 +26,6 @@ export const GamePage = () => {
   const startAttackChance = useGameStore((state) => state.startAttackChance)
   const submitAttackChance = useGameStore((state) => state.submitAttackChance)
   const chooseAttackWinner = useGameStore((state) => state.chooseAttackWinner)
-  const executeAttackRemoval = useGameStore((state) => state.executeAttackRemoval)
   const executeAttackByPanel = useGameStore((state) => state.executeAttackByPanel)
 
   const [role, setRole] = useState<'pl' | 'gm'>('pl')
@@ -53,7 +52,7 @@ export const GamePage = () => {
     .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt))
 
   const selectedPanel = board.find((panel) => panel.id === selectedPanelId) ?? null
-  const available = getAvailablePanels(board, settings.boardSize)
+  const available = getAvailablePanels(board)
   const winnerTeamId = attackChance?.winnerSubmissionId ? attackChance.submissions.find((s) => s.id === attackChance.winnerSubmissionId)?.teamId ?? null : null
 
   const handleRequestSubmit = () => {
@@ -83,6 +82,22 @@ export const GamePage = () => {
 
     setEvidenceUrl('')
     setComment('')
+  }
+
+  const handleManualAcquire = () => {
+    setError('')
+
+    if (!selectedPanel) {
+      setError('取得するパネルを選択してください。')
+      return
+    }
+
+    if (!manualTeamId) {
+      setError('取得先チームを選択してください。')
+      return
+    }
+
+    manualAcquirePanel(selectedPanel.id, manualTeamId)
   }
   
   return (

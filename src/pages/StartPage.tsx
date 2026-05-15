@@ -70,24 +70,6 @@ export const StartPage = () => {
     return <Navigate to="/result" replace />
   }
 
-  const resizeTeams = (count: number) => {
-    setTeams((prev) => {
-      const next = [...prev]
-      if (next.length > count) {
-        return next.slice(0, count)
-      }
-      while (next.length < count) {
-        const idx = next.length
-        next.push({
-          name: `チーム${idx + 1}`,
-          color: TEAM_COLOR_PRESETS[idx % TEAM_COLOR_PRESETS.length].color,
-          playersRaw: '',
-        })
-      }
-      return next
-    })
-  }
-
   const updateTeam = (index: number, patch: Partial<TeamForm>) => {
     setTeams((prev) => prev.map((team, i) => (i === index ? { ...team, ...patch } : team)))
   }
@@ -110,19 +92,6 @@ export const StartPage = () => {
     setTeams((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const getContrastColor = (hex: string) => {
-    try {
-      const c = hex.replace('#', '')
-      const r = parseInt(c.substring(0, 2), 16)
-      const g = parseInt(c.substring(2, 4), 16)
-      const b = parseInt(c.substring(4, 6), 16)
-      const yiq = (r * 299 + g * 587 + b * 114) / 1000
-      return yiq >= 128 ? '#0f172a' : '#ffffff'
-    } catch (e) {
-      return '#0f172a'
-    }
-  }
-
   const parsePlayers = (playersRaw: string) =>
     playersRaw
       .split(',')
@@ -142,10 +111,6 @@ export const StartPage = () => {
   const addMember = (teamIndex: number) => {
     const players = parsePlayers(teams[teamIndex].playersRaw)
     updatePlayers(teamIndex, [...players, ''])
-  }
-
-  const updateBonus = (teamIndex: number, bonuses: number[]) => {
-    updateTeam(teamIndex, { bonusRaw: bonuses.join(',') })
   }
 
   const getBonusParts = (teamIndex: number) => {
@@ -246,7 +211,7 @@ export const StartPage = () => {
           onClick={() => {
             try {
               localStorage.removeItem('attack1025-game-state')
-            } catch (e) {
+            } catch {
               // ignore
             }
             resetGame()

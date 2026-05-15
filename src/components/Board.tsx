@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import type { Panel, Team, CaptureRequest } from '../types/game'
 
 type BoardProps = {
@@ -58,7 +58,7 @@ export const Board = ({
       activePointerId = e.pointerId
       try {
         (el as Element).setPointerCapture?.(activePointerId)
-      } catch (err) {
+      } catch {
         // ignore
       }
       startRef.current = { x: e.clientX, y: e.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop }
@@ -106,7 +106,7 @@ export const Board = ({
               }
             }
           }
-        } catch (err) {
+        } catch {
           // ignore
         }
       }
@@ -117,7 +117,7 @@ export const Board = ({
       }, 0)
       try {
         (el as Element).releasePointerCapture?.(e.pointerId)
-      } catch (err) {
+      } catch {
         // ignore
       }
       activePointerId = null
@@ -134,7 +134,7 @@ export const Board = ({
       el.removeEventListener('pointerup', onPointerUp)
       el.removeEventListener('pointercancel', onPointerUp)
     }
-  }, [isPointerDown])
+  }, [isPointerDown, attackExecMode, attackExecutorTeamId, onExecutePanel, onSelectPanel, board])
 
   return (
     <div
@@ -190,27 +190,7 @@ export const Board = ({
                 <button
                   type="button"
                   data-panel-id={panel.id}
-                  onClick={() => {
-                    // fallback for environments where pointerup might not fire
-                    if (isDraggingRef.current) return
-                    if (attackExecMode && typeof onExecutePanel === 'function' && panel.ownerTeamId && panel.ownerTeamId !== attackExecutorTeamId) {
-                      onExecutePanel(panel.id)
-                    } else {
-                      onSelectPanel(panel.id)
-                    }
-                  }}
-                  onPointerUp={(e) => {
-                    // prefer pointerup for reliable detection alongside drag handling
-                    if (isDraggingRef.current) return
-                    // only react to primary button
-                    // @ts-ignore - PointerEvent type is available in DOM
-                    if (e && typeof (e as PointerEvent).button === 'number' && (e as PointerEvent).button !== 0) return
-                    if (attackExecMode && typeof onExecutePanel === 'function' && panel.ownerTeamId && panel.ownerTeamId !== attackExecutorTeamId) {
-                      onExecutePanel(panel.id)
-                    } else {
-                      onSelectPanel(panel.id)
-                    }
-                  }}
+
                   className={`w-full h-full aspect-square rounded border text-[10px] font-semibold leading-tight transition hover:border-slate-500 relative ${isExecutable ? 'cursor-crosshair' : ''}`}
                   style={{
                     backgroundColor:
