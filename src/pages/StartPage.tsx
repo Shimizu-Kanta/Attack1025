@@ -14,12 +14,18 @@ type TeamForm = {
 
 // board size can be any integer between 5 and 32
 
+const getDefaultTeamName = (colorName: string) => `${colorName}チーム` 
+
 const createTeamDefaults = (count: number): TeamForm[] =>
-  Array.from({ length: count }).map((_, i) => ({
-    name: `チーム${i + 1}`,
-    color: TEAM_COLOR_PRESETS[i % TEAM_COLOR_PRESETS.length].color,
-    playersRaw: '',
-  }))
+  Array.from({ length: count }).map((_, i) => {
+    const preset = TEAM_COLOR_PRESETS[i % TEAM_COLOR_PRESETS.length]
+
+    return {
+      name: getDefaultTeamName(preset.name),
+      color: preset.color,
+      playersRaw: '',
+    }
+  })
 
 export const StartPage = () => {
   const navigate = useNavigate()
@@ -77,11 +83,13 @@ export const StartPage = () => {
   const addTeam = () => {
     setTeams((prev) => {
       const idx = prev.length
+      const preset = TEAM_COLOR_PRESETS[idx % TEAM_COLOR_PRESETS.length]
+
       return [
         ...prev,
         {
-          name: `チーム${idx + 1}`,
-          color: TEAM_COLOR_PRESETS[idx % TEAM_COLOR_PRESETS.length].color,
+          name: getDefaultTeamName(preset.name),
+          color: preset.color,
           playersRaw: '',
         },
       ]
@@ -355,7 +363,17 @@ export const StartPage = () => {
                   <select
                     className="mt-1 w-full rounded border border-slate-300 p-2"
                     value={team.color}
-                    onChange={(e) => updateTeam(i, { color: e.target.value })}
+                    onChange={(e) => {
+                      const selectedColor = e.target.value
+                      const selextedPreset = TEAM_COLOR_PRESETS.find(
+                        (preset) => preset.color === selectedColor,
+                      )
+
+                      updateTeam(i, {
+                        color: selectedColor,
+                        name: selextedPreset ? getDefaultTeamName(selextedPreset.name) : team.name,
+                      }) 
+                    }}
                   >
                     {TEAM_COLOR_PRESETS.map((preset) => (
                       <option key={preset.color} value={preset.color}>
