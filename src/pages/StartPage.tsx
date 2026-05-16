@@ -70,7 +70,7 @@ export const StartPage = () => {
   }, [excludedRaw, pokemonNumberEnd, pokemonNumberStart])
 
   if (phase === 'playing') {
-    return <Navigate to="/game" replace />
+    return <Navigate to="/game/gm" replace />
   }
   if (phase === 'ended') {
     return <Navigate to="/result" replace />
@@ -202,7 +202,7 @@ export const StartPage = () => {
           bonusNumbers: parseBonus(team.bonusRaw ?? ''),
         })),
       )
-      navigate('/game')
+      navigate('/game/gm')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'ゲーム開始に失敗しました。')
     }

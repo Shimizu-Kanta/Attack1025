@@ -66,6 +66,7 @@ type GameStore = {
   startAttackChance: (topic: string) => void
   submitAttackChance: (input: { teamId: string; playerName: string; comment?: string }) => { ok: boolean; message?: string }
   chooseAttackWinner: (submissionId: string) => void
+  grantAttackChanceToTeam: (teamId: string) => { ok: boolean; message?: string }
   executeAttackRemoval: (executorTeamId: string, targetTeamId: string) => { ok: boolean; message?: string; lostPanelId?: string | null }
   executeAttackByPanel: (executorTeamId: string, panelId: string) => { ok: boolean; message?: string; lostPanelId?: string | null }
 }
@@ -626,6 +627,37 @@ export const useGameStore = create<GameStore>()(
         }))
       },
 
+      grantAttackChanceToTeam: (teamId: string) => {
+        const state = get()
+        const team =  state.teams.find((t) => t.id === teamId)
+
+        if (!team) {
+          return { ok: false, message: 'チームが見つかりません。' }
+        }
+
+        const nextTeams =  state.teams.map((t) => 
+          t.id === teamId
+            ? {
+                ...t,
+                attackExecutions: (t.attackExecutions ?? 0) + 1,
+            }
+            : t,
+        )
+
+        set({
+          teams: nextTeams,
+          logs: [
+            createLog(
+              'request_approved', 
+              `アタックチャンス権利付与: ${team.name} にアタック権利を付与`
+            ), 
+            ...state.logs],
+        })
+          
+        return { ok: true }
+
+      },
+
       // executorTeamId: the team which is executing the right (must match winner team)
       executeAttackRemoval: (executorTeamId: string, targetTeamId: string) => {
         const state = get()
@@ -662,40 +694,70 @@ export const useGameStore = create<GameStore>()(
         return { ok: true, lostPanelId: result.lostPanelId }
       },
 
-        // Execute attack by selecting a specific panel id to remove ownership from
-        executeAttackByPanel: (executorTeamId: string, panelId: string) => {
-          const state = get()
-          if (!state.attackChance || !state.attackChance.winnerSubmissionId) {
-            return { ok: false, message: '勝者が選定されていません' }
-          }
-          if (state.attackChance.executed) {
-            return { ok: false, message: '既に実行済みです' }
-          }
+      // Execute attack by selecting a specific panel id to remove ownership from
+      executeAttackByPanel: (executorTeamId: string, panelId: string) => {
+        const state = get()
 
-          const winnerSub = state.attackChance.submissions.find((s) => s.id === state.attackChance!.winnerSubmissionId)
-          if (!winnerSub) return { ok: false, message: '勝者情報が見つかりません' }
-          if (winnerSub.teamId !== executorTeamId) {
-            return { ok: false, message: '権利を持つチームのみ実行できます' }
-          }
+        const executorTeam = state.teams.find((team) => team.id === executorTeamId)
 
-          const panel = state.board.find((p) => p.id === panelId)
-          if (!panel) return { ok: false, message: '対象パネルが見つかりません' }
-          if (!panel.ownerTeamId) return { ok: false, message: '対象パネルは所有されていません' }
-          if (panel.ownerTeamId === executorTeamId) return { ok: false, message: '自チームのパネルは対象にできません' }
+        if (!executorTeam) {
+          return { ok: false, message: '実行チームが見つかりません' }
+        }
 
-          const nextBoard = state.board.map((p) => (p.id === panelId ? { ...p, ownerTeamId: null } : { ...p }))
+        if ((executorTeam.attackExecutions ?? 0) <= 0) {
+          return { ok: false, message: 'アタック権がありません' }
+        }
 
-          const nextTeams = state.teams.map((t) =>
-            t.id === executorTeamId ? { ...t, attackExecutions: (t.attackExecutions || 0) + 1 } : t,
-          )
+        const panel = state.board.find((p) => p.id === panelId)
 
-          const logs = [createLog('panel_lost', `アタック実行(選択): チーム ${panel.ownerTeamId} のパネル ${panel.id} を喪失`), ...state.logs]
+        if (!panel) {
+          return { ok: false, message: '対象パネルが見つかりません' }
+        }
 
-          set({ board: computeHighlights(nextBoard, nextTeams), logs, attackChance: { ...(state.attackChance || { active: false, submissions: [] }), executed: true } })
+        if (!panel.ownerTeamId) {
+          return { ok: false, message: 'このパネルはどのチームのものでもありません' }
+        }
 
-          return { ok: true, lostPanelId: panelId }
-        },
+        if (panel.ownerTeamId === executorTeamId) {
+          return { ok: false, message: '自分のパネルは攻撃できません' }
+        }
+
+        const ownerTeam = state.teams.find((team) => team.id === panel.ownerTeamId)
+
+        const nextBoard = state.board.map((p) =>
+          p.id === panelId
+            ? { 
+              ...p, 
+              ownerTeamId: null, 
+              revealStatus: 'revealed' as const, 
+            }
+            : p,
+        )
+
+        const nextTeams = state.teams.map((team) =>
+          team.id === executorTeamId
+            ? { 
+                ...team, 
+                attackExecutions: Math.max(0, (team.attackExecutions ?? 0) - 1) }
+            : team,
+        )
+
+        set({
+          board: computeHighlights(nextBoard, nextTeams),
+          teams: nextTeams,
+          logs: [
+            createLog(
+              'panel_lost',
+              `${executorTeam.name} が ${ownerTeam?.name || '不明チーム'} の No.${panel.pokemonNumber} をアタック！`,
+            ),
+            ...state.logs,
+          ],
+        })
+
+        return { ok: true, lostPanelId: panelId }
+      },
     }),
+
     {
       name: STORAGE_KEY,
       merge: (persistedState, currentState) => {

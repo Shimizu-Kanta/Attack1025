@@ -8,6 +8,8 @@ function App() {
     <Routes>
       <Route path="/" element={<StartPage />} />
       <Route path="/game" element={<GamePage />} />
+      <Route path="/game/gm" element={<GamePage />} />
+      <Route path="/game/:teamId" element={<GamePage />} />
       <Route path="/result" element={<ResultPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
