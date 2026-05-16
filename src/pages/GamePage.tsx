@@ -29,6 +29,7 @@ export const GamePage = () => {
   const submitAttackChance = useGameStore((state) => state.submitAttackChance)
   const chooseAttackWinner = useGameStore((state) => state.chooseAttackWinner)
   const executeAttackByPanel = useGameStore((state) => state.executeAttackByPanel)
+  const grantAttackChanceToTeam = useGameStore((state) => state.grantAttackChanceToTeam)
 
   const isGmPage = location.pathname === '/game/gm' ||  teamId === 'gm'
   const role: 'pl' | 'gm' = isGmPage ? 'gm' : 'pl'
@@ -38,7 +39,7 @@ export const GamePage = () => {
       ? teams.find((team) => team.id === teamId)
       : null
 
-  const [tab, setTab] = useState<'pending' | 'history' | 'logs' | 'available'>('pending')
+  const [tab, setTab] = useState<'pending' |'attack-chance' | 'history' | 'logs' | 'available'>('pending')
   const [requestTeamId, setRequestTeamId] = useState('')
   const [playerName, setPlayerName] = useState('')
   const [evidenceUrl, setEvidenceUrl] = useState('')
@@ -201,6 +202,35 @@ export const GamePage = () => {
         <aside style={{ position: 'sticky', top: '4rem', height: 'calc(100vh - 4rem - 6rem)', overflow: 'auto' }} className="space-y-3">
           {role === 'pl' ? (
             <section className="space-y-3 rounded border border-slate-300 bg-white p-3">
+              {currentTeam && (currentTeam.attackExecutions ?? 0) > 0 ? (
+                <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3">
+                  <h3 className='text-sm font-bold text-amber-800'>アタックチャンス</h3>
+                  <p className="mt-1 text-xs text-amber-700">
+                    残りアタック回数：{currentTeam.attackExecutions ?? 0} 回
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if  (!selectedPanel) {
+                        setError('アタックするパネルを選択してください。')
+                        return
+                      }
+
+                      const result = executeAttackByPanel(currentTeam.id, selectedPanel.id)
+                      if (!result.ok) {
+                        setError(result.message ?? 'アタックの実行に失敗しました。')
+                        return
+                      }
+
+                      setError('')
+                    }}
+                    className = "mt-2 rounded bg-amber-600 px-3 py-2 text-sm font-semibold text-white"
+                  >    
+                    選択パネルをアタックする
+                  </button>
+                </div>
+              ): null}
               <h2 className="text-sm font-bold text-slate-700">PL: 取得申請</h2>
               {currentTeam ? (
                 <div className="rounded border border-slate-200 bg-slate-50 p-2 text-xs">
@@ -329,6 +359,7 @@ export const GamePage = () => {
               <div className="flex flex-wrap gap-1 text-xs">
                 {[
                   ['pending', '未処理申請'],
+                  ['attack-chance', 'アタックチャンス'],
                   ['history', '申請履歴'],
                   ['logs', 'ログ'],
                   ['available', '取得可能'],
@@ -420,6 +451,35 @@ export const GamePage = () => {
                   onApprove={approveRequest}
                   onReject={rejectRequest}
                 />
+              ) : null}
+
+              {tab === 'attack-chance' ? (
+                <div className="mt-3 rounded border border-slate-200 p-2">
+                  <h3 className="text-xs font-bold">アタックチャンス付与</h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    選択したチームにアタック実行権を一回付与します。
+                  </p>
+
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {teams.map((team) => (
+                      <button
+                        key={team.id}
+                        type="button"
+                        onClick={() => {
+                          const result = grantAttackChanceToTeam(team.id)
+                          if(!result.ok) {
+                            setError(result.message ?? 'アタックチャンスの付与に失敗しました')
+                          }
+                        }}
+                        className = "rounded px-3 py-1 text-xs text-white"
+                        style = {{ backgroundColor: team.color }}
+                      >
+                        {team.name} に付与
+                      </button>
+                    ))}
+                  </div>
+
+                </div>
               ) : null}
 
               {tab === 'history' ? (
