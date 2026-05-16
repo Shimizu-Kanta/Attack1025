@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Link, Navigate, useParams, useLocation } from 'react-router-dom'
 import { Board } from '../components/Board'
 import { GameLogPanel } from '../components/GameLogPanel'
 import { RequestList } from '../components/RequestList'
@@ -8,6 +8,8 @@ import { useGameStore } from '../store/gameStore'
 import { getAvailablePanels } from '../logic/gameLogic'
 
 export const GamePage = () => {
+  const { teamId } = useParams()
+  const location = useLocation()
   const phase = useGameStore((state) => state.phase)
   const board = useGameStore((state) => state.board)
   const settings = useGameStore((state) => state.settings)
@@ -28,7 +30,14 @@ export const GamePage = () => {
   const chooseAttackWinner = useGameStore((state) => state.chooseAttackWinner)
   const executeAttackByPanel = useGameStore((state) => state.executeAttackByPanel)
 
-  const [role, setRole] = useState<'pl' | 'gm'>('pl')
+  const isGmPage = location.pathname === '/game/gm' ||  teamId === 'gm'
+  const role: 'pl' | 'gm' = isGmPage ? 'gm' : 'pl'
+
+  const currentTeam = 
+    !isGmPage && teamId
+      ? teams.find((team) => team.id === teamId)
+      : null
+
   const [tab, setTab] = useState<'pending' | 'history' | 'logs' | 'available'>('pending')
   const [requestTeamId, setRequestTeamId] = useState('')
   const [playerName, setPlayerName] = useState('')
@@ -39,6 +48,11 @@ export const GamePage = () => {
   const [attackComment, setAttackComment] = useState('')
   const [attackTopic, setAttackTopic] = useState('')
   const [attackExecMode, setAttackExecMode] = useState(false)
+
+  const effectiveTeamId = currentTeam?.id ?? requestTeamId
+  const selectedRequestTeam = 
+    currentTeam ?? teams.find((team) => team.id === requestTeamId) ?? null
+
 
   if (phase === 'setup') {
     return <Navigate to="/" replace />
@@ -61,7 +75,7 @@ export const GamePage = () => {
       setError('申請するパネルを選択してください。')
       return
     }
-    if (!requestTeamId) {
+    if (!effectiveTeamId) {
       setError('申請チームを選択してください。')
       return
     }
@@ -69,7 +83,7 @@ export const GamePage = () => {
 
     const result = submitRequest({
       panelId: selectedPanel.id,
-      teamId: requestTeamId,
+      teamId: effectiveTeamId,
       playerName: playerName.trim() || '匿名',
       evidenceUrl,
       comment,
@@ -105,20 +119,38 @@ export const GamePage = () => {
       <header className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-300 bg-white p-3 h-16">
         <h1 className="text-xl font-bold text-slate-800">Attack1025 ゲーム画面 ({settings.boardSize}x{settings.boardSize})</h1>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className={`rounded px-3 py-1 text-sm ${role === 'pl' ? 'bg-blue-600 text-white' : 'bg-slate-200'}`}
-            onClick={() => setRole('pl')}
+          <Link
+            to="/game"
+            className={`rounded px-3 py-1 text-sm ${
+              role === 'pl' ? 'bg-indigo-600 text-white' : 'bg-slate-200'
+              }`}
           >
             PL画面
-          </button>
-          <button
-            type="button"
-            className={`rounded px-3 py-1 text-sm ${role === 'gm' ? 'bg-indigo-700 text-white' : 'bg-slate-200'}`}
-            onClick={() => setRole('gm')}
+          </Link>
+
+          <Link
+            to="/game/gm"
+            className={`rounded px-3 py-1 text-sm text-white ${isGmPage ? 'bg-slate-400 cursor-not-allowed' : 'bg-indigo-600'}`}
           >
             GM画面
-          </button>
+          </Link>
+
+          {teams.map((team)  =>
+            <Link
+              key={team.id}
+              to={`/game/${team.id}`}
+              className={`rounded px-3 py-1 text-sm ${
+                currentTeam?.id  === team.id
+                ? 'text-white'
+                : 'bg-slate-200 text-slate-700' 
+              }`}
+                style={{
+                  backgroundColor: currentTeam?.id === team.id ? team.color : undefined,
+                }}
+            >
+              {team.name}
+            </Link>
+          )}
           
           <button
             type="button"
@@ -170,24 +202,33 @@ export const GamePage = () => {
           {role === 'pl' ? (
             <section className="space-y-3 rounded border border-slate-300 bg-white p-3">
               <h2 className="text-sm font-bold text-slate-700">PL: 取得申請</h2>
-              <label className="block text-xs">
-                チーム
-                <select
-                  className="mt-1 w-full rounded border border-slate-300 p-2"
-                  value={requestTeamId}
-                  onChange={(e) => {
-                    setRequestTeamId(e.target.value)
-                    setPlayerName('')
-                  }}
-                >
-                  <option value="">選択してください</option>
-                  {teams.map((team) => (
-                    <option key={team.id} value={team.id}>
-                      {team.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {currentTeam ? (
+                <div className="rounded border border-slate-200 bg-slate-50 p-2 text-xs">
+                  <div className="text-slate-500">チーム</div>
+                  <div className="font-bold" style={{ color: currentTeam.color }}>
+                    {currentTeam.name}
+                  </div>
+                </div>
+              ) : (
+                <label className="block text-xs">
+                  チーム
+                  <select
+                    className="mt-1 w-full rounded border border-slate-300 p-2"
+                    value={requestTeamId}
+                    onChange={(e) => {
+                      setRequestTeamId(e.target.value)
+                      setPlayerName('')
+                    }}
+                  >
+                    <option value="">選択してください</option>
+                    {teams.map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {team.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <label className="block text-xs">
                 プレイヤー名
                 <select
@@ -196,7 +237,7 @@ export const GamePage = () => {
                   onChange={(e) => setPlayerName(e.target.value)}
                 >
                   <option value="">匿名</option>
-                  {(teams.find((t) => t.id === requestTeamId)?.players || []).map((p) => (
+                  {(selectedRequestTeam?.players || []).map((p) => (
                     <option key={p} value={p}>
                       {p}
                     </option>
@@ -248,11 +289,11 @@ export const GamePage = () => {
                       <button
                         type="button"
                         onClick={() => {
-                          if (!requestTeamId) {
+                          if (!effectiveTeamId) {
                             setError('申請するチームを選択してください。')
                             return
                           }
-                          const res = submitAttackChance({ teamId: requestTeamId, playerName: playerName.trim() || '匿名', comment: attackComment })
+                          const res = submitAttackChance({ teamId: effectiveTeamId, playerName: playerName.trim() || '匿名', comment: attackComment })
                           if (!res.ok) {
                             setError(res.message ?? '申請に失敗しました')
                             return
