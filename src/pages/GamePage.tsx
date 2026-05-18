@@ -6,10 +6,18 @@ import { RequestList } from '../components/RequestList'
 import { TeamPanel } from '../components/TeamPanel'
 import { useGameStore } from '../store/gameStore'
 import { getAvailablePanels } from '../logic/gameLogic'
+import { useOnlineGame } from '../hooks/useOnlineGame'
+import { submitRequestOnline, rejectRequestOnline, executeAttackByPanelOnline, grantAttackChanceOnline, approveRequestOnline, endGameOnline } from '../services/onlineGameService'
 
 export const GamePage = () => {
-  const { teamId } = useParams()
+  const { gameId, teamId } = useParams()
+  useOnlineGame(gameId)
+
   const location = useLocation()
+
+  const isOnlineGmpage = Boolean(gameId) && location.pathname.endsWith('/gm')
+  const isLocalGmpage = location.pathname === '/game/gm' || teamId === 'gm'
+
   const phase = useGameStore((state) => state.phase)
   const board = useGameStore((state) => state.board)
   const settings = useGameStore((state) => state.settings)
@@ -21,7 +29,7 @@ export const GamePage = () => {
   const setSelectedPanel = useGameStore((state) => state.setSelectedPanel)
   const submitRequest = useGameStore((state) => state.submitRequest)
   const approveRequest = useGameStore((state) => state.approveRequest)
-  const rejectRequest = useGameStore((state) => state.rejectRequest)
+  //const rejectRequest = useGameStore((state) => state.rejectRequest)
   const manualAcquirePanel = useGameStore((state) => state.manualAcquirePanel)
   const endGame = useGameStore((state) => state.endGame)
   const attackChance = useGameStore((state) => state.attackChance)
@@ -31,13 +39,25 @@ export const GamePage = () => {
   const executeAttackByPanel = useGameStore((state) => state.executeAttackByPanel)
   const grantAttackChanceToTeam = useGameStore((state) => state.grantAttackChanceToTeam)
 
-  const isGmPage = location.pathname === '/game/gm' ||  teamId === 'gm'
+  const isGmPage = isOnlineGmpage || isLocalGmpage
   const role: 'pl' | 'gm' = isGmPage ? 'gm' : 'pl'
 
   const currentTeam = 
     !isGmPage && teamId
       ? teams.find((team) => team.id === teamId)
       : null
+
+  const getGmPath = () => {
+    return gameId ? `/games/${gameId}/gm` : '/game/gm'
+  }
+
+  const getTeamPath = (teamId: string) => {
+    return gameId ? `/games/${gameId}/${teamId}` : `/game/${teamId}`
+  }
+
+  const getPlPath = () => {
+    return gameId ? `/games/${gameId}/${teams[0]?.id ?? 'teams'}` : '/game'
+  }
 
   const [tab, setTab] = useState<'pending' |'attack-chance' | 'history' | 'logs' | 'available'>('pending')
   const [requestTeamId, setRequestTeamId] = useState('')
@@ -55,11 +75,20 @@ export const GamePage = () => {
     currentTeam ?? teams.find((team) => team.id === requestTeamId) ?? null
 
 
-  if (phase === 'setup') {
+  if (!gameId && phase === 'setup') {
     return <Navigate to="/" replace />
   }
+
+  if (gameId &&  phase === 'setup') {
+    return (
+      <main className="mx-auto max-w-3xl p-6">
+        <p className='text-sm text-slate-600'>オンラインゲームを読み込み中です ...</p>
+      </main>
+    )
+  }
+
   if (phase === 'ended') {
-    return <Navigate to="/result" replace />
+    return <Navigate to={gameId ? `/games/${gameId}/result` : '/result'} replace />
   }
 
   const pendingRequests = [...requests]
@@ -70,7 +99,7 @@ export const GamePage = () => {
   const available = getAvailablePanels(board)
   const winnerTeamId = attackChance?.winnerSubmissionId ? attackChance.submissions.find((s) => s.id === attackChance.winnerSubmissionId)?.teamId ?? null : null
 
-  const handleRequestSubmit = () => {
+  const handleRequestSubmit = async () => {
     setError('')
     if (!selectedPanel) {
       setError('申請するパネルを選択してください。')
@@ -82,21 +111,59 @@ export const GamePage = () => {
     }
     // プレイヤー名は匿名でも可
 
-    const result = submitRequest({
-      panelId: selectedPanel.id,
-      teamId: effectiveTeamId,
-      playerName: playerName.trim() || '匿名',
-      evidenceUrl,
-      comment,
-    })
+    try {
+      if (gameId) {
+        await submitRequestOnline(gameId, {
+          panelId: selectedPanel.id,
+          pokemonNumber: selectedPanel.pokemonNumber,
+          teamId: effectiveTeamId,
+          playerName: playerName.trim() || '匿名',
+          evidenceUrl: evidenceUrl.trim() || undefined,
+          comment: comment.trim() || undefined,
+        })
+      } else {
+        const result =submitRequest({
+          panelId: selectedPanel.id,
+          teamId: effectiveTeamId,
+          playerName: playerName.trim() || '匿名',
+          evidenceUrl: evidenceUrl.trim() || undefined,
+          comment: comment.trim() || undefined,
+        })
 
-    if (!result.ok) {
-      setError(result.message ?? '申請に失敗しました。')
+        if (!result.ok) {
+          setError(result.message ?? '申請の送信に失敗しました。')
+          return
+        }
+      }
+      setEvidenceUrl('')
+      setComment('')
+
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '申請の送信に失敗しました。')
+    }
+
+  }
+
+  const handleRejectRequest = async (
+    requestId: string,
+    withPenalty: boolean,
+  ) => {
+    setError('')
+
+    const request = requests.find((item) => item.id === requestId)
+
+    if (!request) {
+      setError('対象の申請が見つかりません。')
       return
     }
 
-    setEvidenceUrl('')
-    setComment('')
+    try {
+      if (gameId) {
+        await rejectRequestOnline(gameId, request, withPenalty)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '却下に失敗しました。')
+    }
   }
 
   const handleManualAcquire = () => {
@@ -114,6 +181,43 @@ export const GamePage = () => {
 
     manualAcquirePanel(selectedPanel.id, manualTeamId)
   }
+
+  const handleApproveRequest = async (requestId: string) => {
+    setError('')
+
+    const request = requests.find((item) => item.id === requestId)
+
+    if (!request) {
+      setError('対象の申請が見つかりません。')
+      return
+    }
+
+    try {
+      if (gameId) {
+        await approveRequestOnline(gameId, request)
+      } else {
+        approveRequest(requestId)
+      }
+
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '承認に失敗しました。')
+    }
+  }
+
+  const handleEndGame = async () => {
+    setError('')
+
+    try {
+      if (gameId) {
+        await endGameOnline(gameId)
+      } else {
+        endGame()
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'ゲームの終了に失敗しました。')
+    }
+
+  }
   
   return (
     <main className="mx-auto w-full max-w-[1800px] min-h-screen space-y-3 p-3 pb-24 flex flex-col">
@@ -121,17 +225,19 @@ export const GamePage = () => {
         <h1 className="text-xl font-bold text-slate-800">Attack1025 ゲーム画面 ({settings.boardSize}x{settings.boardSize})</h1>
         <div className="flex items-center gap-2">
           <Link
-            to="/game"
+            to={getPlPath()}
             className={`rounded px-3 py-1 text-sm ${
-              role === 'pl' ? 'bg-indigo-600 text-white' : 'bg-slate-200'
+              role === 'pl' && !currentTeam ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'
               }`}
           >
             PL画面
           </Link>
 
           <Link
-            to="/game/gm"
-            className={`rounded px-3 py-1 text-sm text-white ${isGmPage ? 'bg-slate-400 cursor-not-allowed' : 'bg-indigo-600'}`}
+            to={getGmPath()}
+            className={`rounded px-3 py-1 text-sm ${
+              role === 'gm' ? 'bg-indigo-700 text-white' : 'bg-slate-200 text-slate-700'
+              }`}
           >
             GM画面
           </Link>
@@ -139,7 +245,7 @@ export const GamePage = () => {
           {teams.map((team)  =>
             <Link
               key={team.id}
-              to={`/game/${team.id}`}
+              to={getTeamPath(team.id)}
               className={`rounded px-3 py-1 text-sm ${
                 currentTeam?.id  === team.id
                 ? 'text-white'
@@ -156,7 +262,7 @@ export const GamePage = () => {
           <button
             type="button"
             onClick={() => {
-              endGame()
+              handleEndGame()
             }}
             className="rounded bg-rose-600 px-3 py-1 text-sm text-white"
           >
@@ -211,19 +317,36 @@ export const GamePage = () => {
 
                   <button
                     type="button"
-                    onClick={() => {
-                      if  (!selectedPanel) {
+                    onClick={async () => {
+                      setError('')
+
+                      if (!currentTeam) {
+                        setError('チーム情報が見つかりません。')
+                        return
+                      }
+
+                      if (!selectedPanel) {
                         setError('アタックするパネルを選択してください。')
                         return
                       }
 
-                      const result = executeAttackByPanel(currentTeam.id, selectedPanel.id)
-                      if (!result.ok) {
-                        setError(result.message ?? 'アタックの実行に失敗しました。')
-                        return
+                      try {
+                        if (gameId) {
+                          await executeAttackByPanelOnline(gameId, currentTeam.id, selectedPanel.id)
+                        } else {
+                          const result = executeAttackByPanel(currentTeam.id, selectedPanel.id)
+
+                          if (!result.ok) {
+                            setError(result.message ?? 'アタックの実行に失敗しました。')
+                            return
+                          }
+                        }
+
+                        setError('')
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : 'アタックの実行に失敗しました。')
                       }
 
-                      setError('')
                     }}
                     className = "mt-2 rounded bg-amber-600 px-3 py-2 text-sm font-semibold text-white"
                   >    
@@ -448,8 +571,8 @@ export const GamePage = () => {
                 <RequestList
                   requests={pendingRequests}
                   teams={teams}
-                  onApprove={approveRequest}
-                  onReject={rejectRequest}
+                  onApprove={handleApproveRequest}
+                  onReject={handleRejectRequest}
                 />
               ) : null}
 
@@ -465,10 +588,21 @@ export const GamePage = () => {
                       <button
                         key={team.id}
                         type="button"
-                        onClick={() => {
-                          const result = grantAttackChanceToTeam(team.id)
-                          if(!result.ok) {
-                            setError(result.message ?? 'アタックチャンスの付与に失敗しました')
+                        onClick={async () => {
+                          setError('')
+
+                          try {
+                            if (gameId) {
+                              await grantAttackChanceOnline(gameId, team.id)
+                            } else {
+                              const result = grantAttackChanceToTeam(team.id)
+
+                              if (!result.ok) {
+                                setError(result.message ?? '付与に失敗しました。')
+                              }
+                            }
+                          } catch (e) {
+                            setError(e instanceof Error ? e.message : '付与に失敗しました。')
                           }
                         }}
                         className = "rounded px-3 py-1 text-xs text-white"

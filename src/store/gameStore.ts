@@ -9,6 +9,7 @@ import {
   getAvailablePanels,
   rankTeams,
   revealAroundPanel,
+  computePanelHighlights,
 } from '../logic/gameLogic'
 import type {
   CaptureRequest,
@@ -38,6 +39,17 @@ type SetupTeamInput = {
   bonusNumbers?: number[]
 }
 
+type OnlineGameStatePatch = Partial<{
+  phase: GamePhase
+  settings: GameSettings
+  teams: Team[]
+  board: Panel[]
+  requests: CaptureRequest[]
+  logs: GameLog[]
+  startedAt: string | null
+  endedAt: string | null
+}>
+
 type GameStore = {
   phase: GamePhase
   settings: GameSettings
@@ -48,6 +60,8 @@ type GameStore = {
   selectedPanelId: string | null
   startedAt: string | null
   endedAt: string | null
+
+  setOnlineState: (partial: OnlineGameStatePatch) => void
 
   availablePanels: () => Panel[]
   scores: () => Record<string, number>
@@ -89,26 +103,6 @@ const createLog = (type: GameLog['type'], message: string): GameLog => ({
   message,
   createdAt: new Date().toISOString(),
 })
-
-const computeHighlights = (board: Panel[], teams: Team[]): Panel[] => {
-  return board.map((panel) => {
-    // owned panels should have no highlights
-    if (panel.ownerTeamId) {
-      return { ...panel, highlightType: 'none', highlightRequest: false, highlightBonus: false }
-    }
-
-    const hasRequest = (panel.pendingRequestIds || []).length > 0
-    const teamsWithBonus = teams.filter((t) => (t.bonusNumbers || []).includes(panel.pokemonNumber))
-    const hasBonus = panel.revealStatus === 'revealed' && teamsWithBonus.length > 0
-
-    return {
-      ...panel,
-      highlightType: hasRequest ? 'request' : hasBonus ? 'bonus' : 'none',
-      highlightRequest: hasRequest,
-      highlightBonus: hasBonus,
-    }
-  })
-}
 
 const canRestoreActivePhase = (
   phase: GamePhase,
@@ -187,7 +181,7 @@ export const useGameStore = create<GameStore>()(
         )
 
         // compute initial highlights (bonus for revealed bonus numbers)
-        board = computeHighlights(board, [])
+        board = computePanelHighlights(board, [])
 
         const teams: Team[] = teamInputs.map((team, index) => ({
           id: `team-${index + 1}`,
@@ -203,7 +197,7 @@ export const useGameStore = create<GameStore>()(
           phase: 'playing',
           settings,
           teams,
-          board: computeHighlights(board, teams),
+          board: computePanelHighlights(board, teams),
           attackChance: { active: false, submissions: [] },
           requests: [],
           logs: [
@@ -275,7 +269,7 @@ export const useGameStore = create<GameStore>()(
         }
 
         set({
-          board: computeHighlights(nextBoard, state.teams),
+          board: computePanelHighlights(nextBoard, state.teams),
           requests: [...state.requests, request],
           logs: nextLogs,
         })
@@ -379,7 +373,7 @@ export const useGameStore = create<GameStore>()(
         }
 
         set({
-          board: computeHighlights(nextBoard, state.teams),
+          board: computePanelHighlights(nextBoard, state.teams),
           requests: nextRequests,
           logs,
         })
@@ -433,7 +427,7 @@ export const useGameStore = create<GameStore>()(
         }
 
         set({
-          board: computeHighlights(nextBoard, nextTeams),
+          board: computePanelHighlights(nextBoard, nextTeams),
           teams: nextTeams,
           requests: state.requests.map((item) =>
             item.id === request.id
@@ -514,7 +508,7 @@ export const useGameStore = create<GameStore>()(
           logs.unshift(createLog('panel_acquired', `GM操作: ${team.name} が周囲 ${radius} マスをまとめて取得 (${acquiredIds.size} マス)`))
         }
 
-        set({ board: computeHighlights(nextBoard, state.teams), requests: nextRequests, logs })
+        set({ board: computePanelHighlights(nextBoard, state.teams), requests: nextRequests, logs })
       },
 
       endGame: () => {
@@ -575,6 +569,13 @@ export const useGameStore = create<GameStore>()(
           }
           return { ...state, selectedPanelId: panelId }
         })
+      },
+
+      setOnlineState: (partial) => {
+        set((state) => ({
+          ...state,
+          ...partial
+        }))
       },
 
       // Attack Chance methods
@@ -689,7 +690,7 @@ export const useGameStore = create<GameStore>()(
 
         const logs = [createLog('panel_lost', `アタック実行: チーム ${targetTeamId} のパネルを1枚喪失`), ...state.logs]
 
-        set({ board: computeHighlights(result.board, nextTeams), logs, attackChance: { ...(state.attackChance || { active: false, submissions: [] }), executed: true } })
+        set({ board: computePanelHighlights(result.board, nextTeams), logs, attackChance: { ...(state.attackChance || { active: false, submissions: [] }), executed: true } })
 
         return { ok: true, lostPanelId: result.lostPanelId }
       },
@@ -743,7 +744,7 @@ export const useGameStore = create<GameStore>()(
         )
 
         set({
-          board: computeHighlights(nextBoard, nextTeams),
+          board: computePanelHighlights(nextBoard, nextTeams),
           teams: nextTeams,
           logs: [
             createLog(

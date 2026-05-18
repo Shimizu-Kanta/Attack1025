@@ -234,3 +234,31 @@ export const applyPenaltyLoss = (
 
   return { board: nextBoard, lostPanelId: lost.id }
 }
+
+export const computePanelHighlights = (
+  board: Panel[],
+  teams: Team[],
+): Panel[] => {
+  return board.map((panel) => {
+    if (panel.ownerTeamId) {
+      return {
+        ...panel,
+        highlightType: 'none',
+        highlightRequest: false,
+        highlightBonus: false,
+      }
+    }
+
+    const hasRequest = (panel.pendingRequestIds || []).length > 0
+    const hasBonus =
+      panel.revealStatus === 'revealed' &&
+      teams.some((team) => (team.bonusNumbers || []).includes(panel.pokemonNumber))
+
+    return {
+      ...panel,
+      highlightType: hasRequest ? 'request' : hasBonus ? 'bonus' : 'none',
+      highlightRequest: hasRequest,
+      highlightBonus: hasBonus,
+    }
+  })
+}

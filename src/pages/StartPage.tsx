@@ -4,6 +4,7 @@ import { TEAM_COLOR_PRESETS } from '../data/teamColors'
 import { useGameStore } from '../store/gameStore'
 import type { GameSettings, RevealMode } from '../types/game'
 import { createDefaultSeed } from '../utils/seed'
+import { createOnlineGame } from '../services/onlineGameService'
 
 type TeamForm = {
   name: string
@@ -205,6 +206,63 @@ export const StartPage = () => {
       navigate('/game/gm')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'ゲーム開始に失敗しました。')
+    }
+  }
+
+  const handleStartOnline = async () => {
+    setError('')
+
+    const excludedPokemonNumbers = excludedRaw
+      .split(',')
+      .map((value) => Number(value.trim()))
+      .filter((value) => Number.isInteger(value) && value >= 1 && value <= 1025)
+
+    const settings: GameSettings = {
+      boardSize,
+      seed: seed.trim() || createDefaultSeed(),
+      pokemonNumberStart,
+      pokemonNumberEnd,
+      excludedPokemonNumbers,
+      revealMode,
+      penaltyThreshold,
+      initialOpenCount,
+    }
+
+    const colors = teams.map((t) => t.color)
+    const uniqueColors = new Set(colors)
+
+    if (uniqueColors.size !== colors.length) {
+      setError('同じカラーが選択されています。各チームで異なるカラーを選択してください。')
+      return
+    }
+
+    if (teams.length < 2) {
+      setError('チームは2つ以上必要です。')
+      return
+    }
+
+    if (previewPoolCount < requiredCount) {
+      setError('利用可能な図鑑番号が足りません。除外設定と範囲を確認してください。')
+      return
+    }
+
+    try {
+      const gameId = await createOnlineGame({
+        settings,
+        teams: teams.map((team, index) => ({
+          name: team.name.trim() || `チーム${index + 1}`,
+          color: team.color,
+          players: team.playersRaw
+            .split(',')
+            .map((name) => name.trim())
+            .filter(Boolean),
+          bonusNumbers: parseBonus(team.bonusRaw ?? ''),
+        })),
+      })
+
+      navigate(`/games/${gameId}/gm`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'オンラインゲーム開始に失敗しました。')
     }
   }
 
@@ -477,13 +535,24 @@ export const StartPage = () => {
 
       {error ? <p className="rounded bg-rose-100 p-2 text-sm text-rose-700">{error}</p> : null}
 
-      <button
-        type="button"
-        onClick={handleStart}
-        className="rounded bg-blue-600 px-4 py-2 font-semibold text-white"
-      >
-        ゲーム開始
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={handleStart}
+          className="rounded bg-blue-600 px-4 py-2 font-semibold text-white"
+        >
+          ローカルゲーム開始
+        </button>
+
+        <button
+          type="button"
+          onClick={handleStartOnline}
+          className="rounded bg-green-600 px-4 py-2 font-semibold text-white"
+        >
+          オンラインゲーム開始
+        </button>
+      </div>
+
     </main>
   )
 }

@@ -1,8 +1,11 @@
-import { Navigate } from 'react-router-dom'
+import { Navigate, useParams } from 'react-router-dom'
 import { Board } from '../components/Board'
 import { useGameStore } from '../store/gameStore'
+import { useOnlineGame } from '../hooks/useOnlineGame'
 
 export const ResultPage = () => {
+  const { gameId } = useParams()
+  useOnlineGame(gameId)
   const phase = useGameStore((state) => state.phase)
   const settings = useGameStore((state) => state.settings)
   const teams = useGameStore((state) => state.teams)
